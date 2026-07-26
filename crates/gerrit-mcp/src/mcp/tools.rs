@@ -12,7 +12,7 @@ use std::collections::BTreeMap;
 // ---------------------------------------------------------------------------
 
 fn default_merged_status() -> Option<String> {
-    Some("merged".to_string())
+    Some(crate::mcp::DEFAULT_STATUS_MERGED.to_string())
 }
 
 fn default_false() -> Option<bool> {
@@ -24,11 +24,11 @@ fn default_true() -> Option<bool> {
 }
 
 fn default_reviewer_state() -> Option<String> {
-    Some("REVIEWER".to_string())
+    Some(crate::mcp::REVIEWER_STATE_REVIEWER.to_string())
 }
 
 fn default_current_revision() -> Option<String> {
-    Some("current".to_string())
+    Some(crate::mcp::DEFAULT_REVISION.to_string())
 }
 
 // ---------------------------------------------------------------------------
@@ -684,7 +684,10 @@ mod tests {
         .unwrap();
         assert_eq!(params.change_id, "12345");
         assert_eq!(params.destination, "main");
-        assert_eq!(params.revision_id, Some("current".to_string()));
+        assert_eq!(
+            params.revision_id,
+            Some(crate::mcp::DEFAULT_REVISION.to_string())
+        );
         assert_eq!(params.keep_reviewers, Some(false));
         assert_eq!(params.allow_conflicts, Some(true));
         assert_eq!(params.allow_empty, Some(false));
@@ -706,7 +709,10 @@ mod tests {
         let params: QueryChangesByDateParams =
             serde_json::from_str(r#"{"start_date": "2026-01-01", "end_date": "2026-01-31"}"#)
                 .unwrap();
-        assert_eq!(params.status, Some("merged".to_string()));
+        assert_eq!(
+            params.status,
+            Some(crate::mcp::DEFAULT_STATUS_MERGED.to_string())
+        );
         assert_eq!(params.limit, None);
         assert_eq!(params.project, None);
     }
@@ -725,7 +731,10 @@ mod tests {
         let params: AddReviewerParams =
             serde_json::from_str(r#"{"change_id": "123", "reviewer": "user@example.com"}"#)
                 .unwrap();
-        assert_eq!(params.state, Some("REVIEWER".to_string()));
+        assert_eq!(
+            params.state,
+            Some(crate::mcp::REVIEWER_STATE_REVIEWER.to_string())
+        );
     }
 
     #[test]
@@ -755,7 +764,10 @@ mod tests {
             r#"{"change_id": "12345", "destination": "release", "gerrit_base_url": "https://gerrit.example.com"}"#,
         )
         .unwrap();
-        assert_eq!(params.revision_id, Some("current".to_string()));
+        assert_eq!(
+            params.revision_id,
+            Some(crate::mcp::DEFAULT_REVISION.to_string())
+        );
         assert_eq!(params.keep_reviewers, Some(false));
         assert_eq!(params.allow_conflicts, Some(true));
         assert_eq!(params.allow_empty, Some(false));

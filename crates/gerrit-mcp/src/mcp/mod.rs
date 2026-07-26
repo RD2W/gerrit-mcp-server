@@ -16,6 +16,14 @@ use rmcp::{
 
 use crate::mcp::tools::*;
 
+pub(crate) const GERRIT_OPTION_CURRENT_REVISION: &str = "CURRENT_REVISION";
+pub(crate) const GERRIT_OPTION_CURRENT_COMMIT: &str = "CURRENT_COMMIT";
+pub(crate) const GERRIT_OPTION_DETAILED_LABELS: &str = "DETAILED_LABELS";
+pub(crate) const REVIEWER_STATE_REVIEWER: &str = "REVIEWER";
+pub(crate) const REVIEWER_STATE_CC: &str = "CC";
+pub(crate) const DEFAULT_REVISION: &str = "current";
+pub(crate) const DEFAULT_STATUS_MERGED: &str = "merged";
+
 fn extract_bugs(commit_message: &str) -> Vec<String> {
     let mut bugs: Vec<String> = Vec::new();
 
@@ -140,7 +148,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
             .format("%Y-%m-%d")
             .to_string();
 
-        let status = params.status.as_deref().unwrap_or("merged");
+        let status = params.status.as_deref().unwrap_or(DEFAULT_STATUS_MERGED);
         let mut query = format!(
             "status:{} after:{} before:{}",
             status, params.start_date, end_plus_one
@@ -179,7 +187,11 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         &self,
         Parameters(params): Parameters<GetChangeDetailsParams>,
     ) -> CallToolResult {
-        let base = &["CURRENT_REVISION", "CURRENT_COMMIT", "DETAILED_LABELS"];
+        let base = &[
+            GERRIT_OPTION_CURRENT_REVISION,
+            GERRIT_OPTION_CURRENT_COMMIT,
+            GERRIT_OPTION_DETAILED_LABELS,
+        ];
         let extra = params.options.unwrap_or_default();
         let opts = Self::merge_options(base, &extra);
 
@@ -205,7 +217,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
                 }
 
                 if let Some(ref reviewers) = detail.reviewers
-                    && let Some(reviewer_list) = reviewers.get("REVIEWER")
+                    && let Some(reviewer_list) = reviewers.get(REVIEWER_STATE_REVIEWER)
                     && !reviewer_list.is_empty()
                 {
                     for r in reviewer_list {
@@ -556,8 +568,8 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         &self,
         Parameters(params): Parameters<AddReviewerParams>,
     ) -> CallToolResult {
-        let state = params.state.as_deref().unwrap_or("REVIEWER");
-        if state != "REVIEWER" && state != "CC" {
+        let state = params.state.as_deref().unwrap_or(REVIEWER_STATE_REVIEWER);
+        if state != REVIEWER_STATE_REVIEWER && state != REVIEWER_STATE_CC {
             return self.error(format!("Invalid state '{}': must be REVIEWER or CC", state));
         }
         let payload = AddReviewerRequest {
@@ -863,7 +875,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         &self,
         Parameters(params): Parameters<CherryPickChangeParams>,
     ) -> CallToolResult {
-        let revision = params.revision_id.as_deref().unwrap_or("current");
+        let revision = params.revision_id.as_deref().unwrap_or(DEFAULT_REVISION);
         let payload = CherryPickRequest {
             message: params.message,
             destination: params.destination,
@@ -892,7 +904,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         &self,
         Parameters(params): Parameters<CherryPickChainParams>,
     ) -> CallToolResult {
-        let revision = params.revision_id.as_deref().unwrap_or("current");
+        let revision = params.revision_id.as_deref().unwrap_or(DEFAULT_REVISION);
 
         let related = match self.repo.get_related(&params.change_id, revision).await {
             Ok(r) => r,
@@ -932,8 +944,10 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
                         change_id_str, revision_str, new_number
                     ));
 
-                    let base_opts =
-                        vec!["CURRENT_REVISION".to_string(), "CURRENT_COMMIT".to_string()];
+                    let base_opts = vec![
+                        GERRIT_OPTION_CURRENT_REVISION.to_string(),
+                        GERRIT_OPTION_CURRENT_COMMIT.to_string(),
+                    ];
                     match self.repo.get_change_detail(&new_id, &base_opts).await {
                         Ok(detail) => {
                             if let Some(ref rev_key) = detail.current_revision
@@ -1295,15 +1309,15 @@ mod tests {
 
     #[test]
     fn test_merge_options_dedup() {
-        let base = &["CURRENT_REVISION", "CURRENT_COMMIT"];
+        let base = &[GERRIT_OPTION_CURRENT_REVISION, GERRIT_OPTION_CURRENT_COMMIT];
         let extra = vec![
-            "CURRENT_REVISION".to_string(),
-            "DETAILED_LABELS".to_string(),
+            GERRIT_OPTION_CURRENT_REVISION.to_string(),
+            GERRIT_OPTION_DETAILED_LABELS.to_string(),
         ];
         let opts = GerritServer::<MockGerritRepository>::merge_options(base, &extra);
         assert_eq!(opts.len(), 3);
-        assert!(opts.contains(&"CURRENT_REVISION".to_string()));
-        assert!(opts.contains(&"CURRENT_COMMIT".to_string()));
-        assert!(opts.contains(&"DETAILED_LABELS".to_string()));
+        assert!(opts.contains(&GERRIT_OPTION_CURRENT_REVISION.to_string()));
+        assert!(opts.contains(&GERRIT_OPTION_CURRENT_COMMIT.to_string()));
+        assert!(opts.contains(&GERRIT_OPTION_DETAILED_LABELS.to_string()));
     }
 }
