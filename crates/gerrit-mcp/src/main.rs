@@ -75,6 +75,7 @@ async fn main() -> anyhow::Result<()> {
             ca_cert: config.gerrit.ca_cert.clone(),
             ca_cert_dir: config.gerrit.ca_cert_dir.clone(),
         },
+        disable_url_normalization: false,
     };
 
     let client = GerritClient::new(client_config)?;

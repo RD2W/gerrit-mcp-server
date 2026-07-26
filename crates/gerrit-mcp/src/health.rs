@@ -34,7 +34,7 @@ pub(crate) struct Metrics {
 static METRICS: OnceLock<Metrics> = OnceLock::new();
 
 #[must_use]
-pub fn metrics() -> &'static Metrics {
+pub(crate) fn metrics() -> &'static Metrics {
     METRICS.get_or_init(Metrics::new)
 }
 

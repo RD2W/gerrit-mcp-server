@@ -32,6 +32,10 @@ pub struct GerritClientConfig {
     pub auth: AuthMode,
     pub timeout: Duration,
     pub tls: TlsConfig,
+    /// When `true`, skips URL normalization (http→https upgrade, `/a` prefix).
+    /// Intended for testing with local mock servers.
+    #[doc(hidden)]
+    pub disable_url_normalization: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -54,7 +58,11 @@ impl GerritClient {
     pub fn new(config: GerritClientConfig) -> Result<Self, DomainError> {
         let tls_config = tls::build_tls_connector(&config.tls)?;
 
-        let base_url = normalize_url_for_auth(config.base_url, &config.auth);
+        let base_url = if config.disable_url_normalization {
+            config.base_url.trim_end_matches('/').to_string()
+        } else {
+            normalize_url_for_auth(config.base_url, &config.auth)
+        };
 
         let client = Client::builder()
             .timeout(config.timeout)

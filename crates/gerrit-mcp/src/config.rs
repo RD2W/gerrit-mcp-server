@@ -136,7 +136,7 @@ impl Config {
         }
     }
 
-    fn validate(&self) -> Result<(), ConfigError> {
+    pub fn validate(&self) -> Result<(), ConfigError> {
         if self.gerrit.base_url.is_empty() {
             return Err(ConfigError::Validation(
                 "gerrit.base_url must not be empty".into(),

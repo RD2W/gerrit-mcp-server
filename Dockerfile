@@ -16,6 +16,7 @@ COPY crates/gerrit-mcp/Cargo.toml crates/gerrit-mcp/
 COPY crates/gerrit-mcp/build.rs crates/gerrit-mcp/
 RUN mkdir -p crates/gerrit-core/src crates/gerrit-mcp/src && \
     echo 'fn main() {}' > crates/gerrit-mcp/src/main.rs && \
+    echo '' > crates/gerrit-mcp/src/lib.rs && \
     echo '' > crates/gerrit-core/src/lib.rs && \
     cargo build --release && \
     rm -rf target/release/.fingerprint/gerrit-*

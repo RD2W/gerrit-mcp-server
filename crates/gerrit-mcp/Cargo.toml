@@ -8,6 +8,9 @@ authors.workspace = true
 
 description = "MCP server for Gerrit code review"
 
+[lib]
+name = "gerrit_mcp"
+
 [[bin]]
 name = "gerrit-mcp"
 path = "src/main.rs"
@@ -28,6 +31,11 @@ serde_json.workspace = true
 clap = { version = "4", features = ["derive"] }
 chrono.workspace = true
 regex-lite.workspace = true
+
+[dev-dependencies]
+wiremock = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+tempfile = { workspace = true }
 
 [build-dependencies]
 chrono.workspace = true

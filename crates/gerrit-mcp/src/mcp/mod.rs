@@ -104,7 +104,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         name = "query_changes",
         description = "Query Gerrit changes using a search query string"
     )]
-    async fn query_changes(
+    pub async fn query_changes(
         &self,
         Parameters(params): Parameters<QueryChangesParams>,
     ) -> CallToolResult {
@@ -134,7 +134,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         name = "query_changes_by_date_and_filters",
         description = "Query Gerrit changes within a date range with optional filters"
     )]
-    async fn query_changes_by_date_and_filters(
+    pub async fn query_changes_by_date_and_filters(
         &self,
         Parameters(params): Parameters<QueryChangesByDateParams>,
     ) -> CallToolResult {
@@ -183,7 +183,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         name = "get_change_details",
         description = "Get detailed information about a Gerrit change"
     )]
-    async fn get_change_details(
+    pub async fn get_change_details(
         &self,
         Parameters(params): Parameters<GetChangeDetailsParams>,
     ) -> CallToolResult {
@@ -261,7 +261,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         name = "get_commit_message",
         description = "Get the commit message for a Gerrit change"
     )]
-    async fn get_commit_message(
+    pub async fn get_commit_message(
         &self,
         Parameters(params): Parameters<GetCommitMessageParams>,
     ) -> CallToolResult {
@@ -286,7 +286,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         name = "list_change_files",
         description = "List files modified in a Gerrit change"
     )]
-    async fn list_change_files(
+    pub async fn list_change_files(
         &self,
         Parameters(params): Parameters<ListChangeFilesParams>,
     ) -> CallToolResult {
@@ -324,7 +324,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         name = "get_file_diff",
         description = "Get the diff for a file in a Gerrit change"
     )]
-    async fn get_file_diff(
+    pub async fn get_file_diff(
         &self,
         Parameters(params): Parameters<GetFileDiffParams>,
     ) -> CallToolResult {
@@ -342,7 +342,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         name = "list_change_comments",
         description = "List published comments on a Gerrit change"
     )]
-    async fn list_change_comments(
+    pub async fn list_change_comments(
         &self,
         Parameters(params): Parameters<ListChangeCommentsParams>,
     ) -> CallToolResult {
@@ -385,7 +385,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         name = "list_draft_comments",
         description = "List draft comments on a Gerrit change"
     )]
-    async fn list_draft_comments(
+    pub async fn list_draft_comments(
         &self,
         Parameters(params): Parameters<ListDraftCommentsParams>,
     ) -> CallToolResult {
@@ -420,7 +420,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         name = "get_most_recent_cl",
         description = "Get the most recent change from a Gerrit user"
     )]
-    async fn get_most_recent_cl(
+    pub async fn get_most_recent_cl(
         &self,
         Parameters(params): Parameters<GetMostRecentClParams>,
     ) -> CallToolResult {
@@ -442,7 +442,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         name = "get_bugs_from_cl",
         description = "Extract bug references from a Gerrit change"
     )]
-    async fn get_bugs_from_cl(
+    pub async fn get_bugs_from_cl(
         &self,
         Parameters(params): Parameters<GetBugsFromClParams>,
     ) -> CallToolResult {
@@ -463,7 +463,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         name = "suggest_reviewers",
         description = "Suggest reviewers for a Gerrit change"
     )]
-    async fn suggest_reviewers(
+    pub async fn suggest_reviewers(
         &self,
         Parameters(params): Parameters<SuggestReviewersParams>,
     ) -> CallToolResult {
@@ -504,7 +504,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         name = "changes_submitted_together",
         description = "List changes submitted together with this one"
     )]
-    async fn changes_submitted_together(
+    pub async fn changes_submitted_together(
         &self,
         Parameters(params): Parameters<ChangesSubmittedTogetherParams>,
     ) -> CallToolResult {
@@ -536,7 +536,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
     }
 
     #[tool(name = "create_change", description = "Create a new change in Gerrit")]
-    async fn create_change(
+    pub async fn create_change(
         &self,
         Parameters(params): Parameters<CreateChangeParams>,
     ) -> CallToolResult {
@@ -564,7 +564,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         name = "add_reviewer",
         description = "Add a reviewer to a Gerrit change"
     )]
-    async fn add_reviewer(
+    pub async fn add_reviewer(
         &self,
         Parameters(params): Parameters<AddReviewerParams>,
     ) -> CallToolResult {
@@ -599,7 +599,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         name = "set_ready_for_review",
         description = "Mark a Gerrit change as ready for review"
     )]
-    async fn set_ready_for_review(
+    pub async fn set_ready_for_review(
         &self,
         Parameters(params): Parameters<SetReadyParams>,
     ) -> CallToolResult {
@@ -616,7 +616,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         name = "set_work_in_progress",
         description = "Mark a Gerrit change as work-in-progress"
     )]
-    async fn set_work_in_progress(
+    pub async fn set_work_in_progress(
         &self,
         Parameters(params): Parameters<SetWipParams>,
     ) -> CallToolResult {
@@ -633,7 +633,10 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
     }
 
     #[tool(name = "set_topic", description = "Set the topic for a Gerrit change")]
-    async fn set_topic(&self, Parameters(params): Parameters<SetTopicParams>) -> CallToolResult {
+    pub async fn set_topic(
+        &self,
+        Parameters(params): Parameters<SetTopicParams>,
+    ) -> CallToolResult {
         let payload = TopicRequest {
             topic: params.topic.clone(),
         };
@@ -645,7 +648,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
     }
 
     #[tool(name = "abandon_change", description = "Abandon a Gerrit change")]
-    async fn abandon_change(
+    pub async fn abandon_change(
         &self,
         Parameters(params): Parameters<AbandonChangeParams>,
     ) -> CallToolResult {
@@ -663,7 +666,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
     }
 
     #[tool(name = "revert_change", description = "Revert a Gerrit change")]
-    async fn revert_change(
+    pub async fn revert_change(
         &self,
         Parameters(params): Parameters<RevertChangeParams>,
     ) -> CallToolResult {
@@ -681,7 +684,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
     }
 
     #[tool(name = "revert_submission", description = "Revert a Gerrit submission")]
-    async fn revert_submission(
+    pub async fn revert_submission(
         &self,
         Parameters(params): Parameters<RevertSubmissionParams>,
     ) -> CallToolResult {
@@ -709,7 +712,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         name = "post_review_comment",
         description = "Post a review comment on a Gerrit change"
     )]
-    async fn post_review_comment(
+    pub async fn post_review_comment(
         &self,
         Parameters(params): Parameters<PostReviewCommentParams>,
     ) -> CallToolResult {
@@ -743,7 +746,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         name = "post_draft_comment",
         description = "Post a draft comment on a Gerrit change"
     )]
-    async fn post_draft_comment(
+    pub async fn post_draft_comment(
         &self,
         Parameters(params): Parameters<PostDraftCommentParams>,
     ) -> CallToolResult {
@@ -796,7 +799,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         name = "delete_draft_comment",
         description = "Delete a specific draft comment on a Gerrit change"
     )]
-    async fn delete_draft_comment(
+    pub async fn delete_draft_comment(
         &self,
         Parameters(params): Parameters<DeleteDraftCommentParams>,
     ) -> CallToolResult {
@@ -814,7 +817,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         name = "delete_draft_comments",
         description = "Delete all draft comments on a Gerrit change"
     )]
-    async fn delete_draft_comments(
+    pub async fn delete_draft_comments(
         &self,
         Parameters(params): Parameters<DeleteDraftCommentsParams>,
     ) -> CallToolResult {
@@ -856,7 +859,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         name = "publish_drafts",
         description = "Publish draft comments on a Gerrit change"
     )]
-    async fn publish_drafts(
+    pub async fn publish_drafts(
         &self,
         Parameters(params): Parameters<PublishDraftsParams>,
     ) -> CallToolResult {
@@ -871,7 +874,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         name = "cherry_pick_change",
         description = "Cherry-pick a Gerrit change to a destination branch"
     )]
-    async fn cherry_pick_change(
+    pub async fn cherry_pick_change(
         &self,
         Parameters(params): Parameters<CherryPickChangeParams>,
     ) -> CallToolResult {
@@ -900,7 +903,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         name = "cherry_pick_chain",
         description = "Cherry-pick a chain of Gerrit changes to a destination branch"
     )]
-    async fn cherry_pick_chain(
+    pub async fn cherry_pick_chain(
         &self,
         Parameters(params): Parameters<CherryPickChainParams>,
     ) -> CallToolResult {
@@ -994,7 +997,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         name = "submit_change",
         description = "Submit a Gerrit change for merge"
     )]
-    async fn submit_change(
+    pub async fn submit_change(
         &self,
         Parameters(params): Parameters<SubmitChangeParams>,
     ) -> CallToolResult {
@@ -1060,7 +1063,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_query_changes_empty_result() {
+    pub async fn test_query_changes_empty_result() {
         let mock = MockGerritRepository::default();
         mock.push_query_changes_result(Ok(vec![]));
         let server = GerritServer::new(mock);
@@ -1077,7 +1080,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_query_changes_with_results() {
+    pub async fn test_query_changes_with_results() {
         let mock = MockGerritRepository::default();
         mock.push_query_changes_result(Ok(vec![make_change(12345, "Test Subject")]));
         let server = GerritServer::new(mock);
@@ -1095,7 +1098,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_cherry_pick_change_success() {
+    pub async fn test_cherry_pick_change_success() {
         let mock = MockGerritRepository::default();
         mock.push_cherry_pick_result(Ok(CherryPickResult {
             id: "new~999".into(),
@@ -1121,7 +1124,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_cherry_pick_chain_success() {
+    pub async fn test_cherry_pick_chain_success() {
         let mock = MockGerritRepository::default();
 
         mock.push_get_related_result(Ok(vec![
@@ -1216,7 +1219,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_submit_change_success() {
+    pub async fn test_submit_change_success() {
         let mock = MockGerritRepository::default();
         mock.push_submit_change_result(Ok(SubmitResult {
             id: "test~42".into(),
