@@ -15,6 +15,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use clap::Parser;
+use gerrit_core::application::GerritService;
 use gerrit_core::infrastructure::auth::AuthMode;
 use gerrit_core::infrastructure::client::{GerritClient, GerritClientConfig};
 use gerrit_core::infrastructure::tls::TlsConfig;
@@ -80,7 +81,23 @@ async fn main() -> anyhow::Result<()> {
 
     let client = GerritClient::new(client_config)?;
 
-    run_transport(&config, client).await?;
+    let mut service = GerritService::new(client);
+
+    if config.cache.enabled {
+        service = service.with_cache(
+            Duration::from_secs(config.cache.ttl_secs),
+            config.cache.max_entries,
+        );
+    }
+
+    if config.rate_limit.enabled {
+        service = service.with_rate_limit(
+            config.rate_limit.requests_per_second,
+            config.rate_limit.burst,
+        );
+    }
+
+    run_transport(&config, service).await?;
 
     Ok(())
 }

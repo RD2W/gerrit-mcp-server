@@ -74,7 +74,7 @@ pub enum RateLimitError {
 // Shared response types
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountInfo {
     #[serde(rename = "_account_id")]
@@ -95,7 +95,7 @@ pub struct GroupInfo {
 // Change
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Change {
     pub id: String,
@@ -115,7 +115,7 @@ pub struct Change {
 // ChangeDetail
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChangeDetail {
     pub id: String,
@@ -145,7 +145,7 @@ pub struct ChangeDetail {
 // RevisionInfo / CommitWithMessage
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RevisionInfo {
     #[serde(rename = "_number")]
@@ -154,7 +154,7 @@ pub struct RevisionInfo {
     pub commit: Option<CommitWithMessage>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommitWithMessage {
     pub message: String,
@@ -164,14 +164,14 @@ pub struct CommitWithMessage {
 // LabelInfo / VoteInfo
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LabelInfo {
     #[serde(default)]
     pub all: Vec<VoteInfo>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VoteInfo {
     #[serde(rename = "_account_id")]
@@ -184,7 +184,7 @@ pub struct VoteInfo {
 // ReviewerInfo
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReviewerInfo {
     #[serde(rename = "_account_id")]
@@ -197,7 +197,7 @@ pub struct ReviewerInfo {
 // Message
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Message {
     #[serde(default)]
