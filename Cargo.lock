@@ -629,6 +629,7 @@ dependencies = [
  "chrono",
  "clap",
  "gerrit-core",
+ "regex-lite",
  "rmcp",
  "schemars",
  "serde",
