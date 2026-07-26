@@ -1,4 +1,61 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Maxim Krutovercev (RD2W) <mkrutovercev@yandex.ru>
 
-//! Streamable HTTP transport via axum + rmcp.
+//! Streamable HTTP transport via axum + rmcp StreamableHttpService.
+
+use std::sync::Arc;
+
+use axum::{Router, routing::get};
+use gerrit_core::domain::GerritRepository;
+use rmcp::transport::streamable_http_server::{
+    StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
+};
+
+use crate::config::Config;
+use crate::health::{health_handler, metrics_handler, ready_handler};
+use crate::mcp::GerritServer;
+
+/// Runs the MCP server over Streamable HTTP with health/metrics endpoints.
+pub async fn run_http<R: GerritRepository + Send + Sync + 'static>(
+    config: &Config,
+    server: GerritServer<R>,
+) -> anyhow::Result<()> {
+    let service_factory = {
+        let svr = server.clone();
+        move || Ok(svr.clone())
+    };
+
+    let mut server_config = StreamableHttpServerConfig::default();
+    if !config.transport.allowed_hosts.is_empty() {
+        server_config = server_config.with_allowed_hosts(&config.transport.allowed_hosts);
+    }
+
+    let mcp_service = StreamableHttpService::new(
+        service_factory,
+        Arc::new(LocalSessionManager::default()),
+        server_config,
+    );
+
+    let health_path = config.transport.health_path.clone();
+    let ready_path = config.transport.ready_path.clone();
+    let metrics_path = config.transport.metrics_path.clone();
+    let http_path = config.transport.http_path.clone();
+    let bind_addr = config.transport.bind_addr.clone();
+
+    let app = Router::new()
+        .nest_service(&http_path, mcp_service)
+        .route(&health_path, get(health_handler))
+        .route(&ready_path, get(ready_handler))
+        .route(&metrics_path, get(metrics_handler));
+
+    tracing::info!(%bind_addr, %http_path, "starting Streamable HTTP transport");
+
+    let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
+    axum::serve(listener, app)
+        .with_graceful_shutdown(async {
+            tokio::signal::ctrl_c().await.ok();
+        })
+        .await?;
+
+    Ok(())
+}
