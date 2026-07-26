@@ -10,8 +10,8 @@ use std::collections::BTreeMap;
 use std::time::Duration;
 
 use reqwest::{Client, RequestBuilder};
-use serde::{Deserialize, Serialize};
 use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 use serde_json;
 
 use crate::domain::*;
@@ -85,10 +85,7 @@ impl GerritClient {
     // -- Builder helpers ----------------------------------------------------
 
     fn get_builder(&self, url: &str) -> RequestBuilder {
-        let builder = self
-            .client
-            .get(url)
-            .header("Accept", "application/json");
+        let builder = self.client.get(url).header("Accept", "application/json");
         apply_auth(builder, &self.base_url, &self.auth)
     }
 
@@ -227,9 +224,7 @@ impl GerritRepository for GerritClient {
         options: &[String],
     ) -> Result<Vec<Change>, DomainError> {
         let q = Self::percent_encode(query);
-        let limit_param = limit
-            .map(|n| format!("&n={n}"))
-            .unwrap_or_default();
+        let limit_param = limit.map(|n| format!("&n={n}")).unwrap_or_default();
         let o = Self::build_options_query(options);
         let url = self.url(&format!("/changes/?q={q}{limit_param}{o}"));
         self.get_json(&url).await
@@ -252,10 +247,7 @@ impl GerritRepository for GerritClient {
         self.get_json(&url).await
     }
 
-    async fn list_files(
-        &self,
-        change_id: &str,
-    ) -> Result<BTreeMap<String, FileInfo>, DomainError> {
+    async fn list_files(&self, change_id: &str) -> Result<BTreeMap<String, FileInfo>, DomainError> {
         let cid = Self::percent_encode(change_id);
         let url = self.url(&format!("/changes/{cid}/revisions/current/files/"));
         self.get_json(&url).await
@@ -266,9 +258,7 @@ impl GerritRepository for GerritClient {
 
         let cid = Self::percent_encode(change_id);
         let fp = Self::percent_encode(file_path);
-        let url = self.url(&format!(
-            "/changes/{cid}/revisions/current/patch?path={fp}"
-        ));
+        let url = self.url(&format!("/changes/{cid}/revisions/current/patch?path={fp}"));
         let raw = self.get_raw(&url).await?;
 
         let decoded = base64::engine::general_purpose::STANDARD
@@ -313,9 +303,7 @@ impl GerritRepository for GerritClient {
     ) -> Result<Vec<SuggestedReviewer>, DomainError> {
         let cid = Self::percent_encode(change_id);
         let q = Self::percent_encode(query);
-        let limit_param = limit
-            .map(|n| format!("&n={n}"))
-            .unwrap_or_default();
+        let limit_param = limit.map(|n| format!("&n={n}")).unwrap_or_default();
         let eg = format!("&exclude-groups={exclude_groups}");
         let rs = reviewer_state
             .map(|s| format!("&reviewer-state={}", Self::percent_encode(s)))
@@ -466,9 +454,7 @@ impl GerritRepository for GerritClient {
     async fn delete_draft(&self, change_id: &str, draft_id: &str) -> Result<(), DomainError> {
         let cid = Self::percent_encode(change_id);
         let did = Self::percent_encode(draft_id);
-        let url = self.url(&format!(
-            "/changes/{cid}/revisions/current/drafts/{did}"
-        ));
+        let url = self.url(&format!("/changes/{cid}/revisions/current/drafts/{did}"));
         self.delete_empty(&url).await
     }
 
@@ -615,9 +601,7 @@ mod tests {
 
         Mock::given(method("GET"))
             .and(path("/a/changes/"))
-            .respond_with(
-                ResponseTemplate::new(404).set_body_string("Not Found"),
-            )
+            .respond_with(ResponseTemplate::new(404).set_body_string("Not Found"))
             .mount(&server)
             .await;
 

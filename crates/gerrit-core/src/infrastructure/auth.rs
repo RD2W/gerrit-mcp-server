@@ -12,13 +12,8 @@ use crate::domain::DomainError;
 /// Supported authentication methods for Gerrit.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum AuthMode {
-    HttpBasic {
-        username: String,
-        password: String,
-    },
-    GitCookies {
-        gitcookies_path: PathBuf,
-    },
+    HttpBasic { username: String, password: String },
+    GitCookies { gitcookies_path: PathBuf },
     Bearer(String),
 }
 
@@ -83,18 +78,16 @@ pub fn apply_auth(
     auth: &AuthMode,
 ) -> reqwest::RequestBuilder {
     match auth {
-        AuthMode::HttpBasic { username, password } => {
-            builder.basic_auth(username, Some(password))
-        }
+        AuthMode::HttpBasic { username, password } => builder.basic_auth(username, Some(password)),
         AuthMode::Bearer(token) => builder.bearer_auth(token),
         AuthMode::GitCookies { gitcookies_path } => {
             let domain = url::Url::parse(base_url)
                 .ok()
                 .and_then(|u| u.host_str().map(|h| h.to_string()));
-            if let Some(domain) = domain {
-                if let Some(cookie) = parse_gitcookies(gitcookies_path, &domain) {
-                    return builder.header("Cookie", cookie);
-                }
+            if let Some(domain) = domain
+                && let Some(cookie) = parse_gitcookies(gitcookies_path, &domain)
+            {
+                return builder.header("Cookie", cookie);
             }
             builder
         }
@@ -235,9 +228,7 @@ mod tests {
     #[test]
     fn test_auth_manager_unknown_host() {
         let manager = AuthManager::new(BTreeMap::new());
-        let err = manager
-            .get_auth("https://gerrit.example.com/")
-            .unwrap_err();
+        let err = manager.get_auth("https://gerrit.example.com/").unwrap_err();
         assert!(err.to_string().contains("no auth configured for host"));
     }
 }

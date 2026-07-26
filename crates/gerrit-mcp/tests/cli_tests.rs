@@ -61,5 +61,8 @@ fn version_text_package_name() {
         .output()
         .expect("failed to run gerrit-mcp --version");
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("gerrit-mcp"), "version missing package name");
+    assert!(
+        stdout.contains("gerrit-mcp"),
+        "version missing package name"
+    );
 }

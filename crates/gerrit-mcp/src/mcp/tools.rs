@@ -38,6 +38,7 @@ fn default_current_revision() -> Option<String> {
 /// Empty parameters for tools that require no input.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[schemars(description = "Empty parameters for tools that require no input")]
+#[allow(dead_code)]
 pub struct NoParams {}
 
 // ---------------------------------------------------------------------------
@@ -52,7 +53,10 @@ pub struct QueryChangesParams {
     pub query: String,
 
     #[serde(default)]
-    #[schemars(default, description = "Base URL of the Gerrit instance (overrides config)")]
+    #[schemars(
+        default,
+        description = "Base URL of the Gerrit instance (overrides config)"
+    )]
     pub gerrit_base_url: Option<String>,
 
     #[serde(default)]
@@ -78,7 +82,10 @@ pub struct QueryChangesByDateParams {
     pub end_date: String,
 
     #[serde(default)]
-    #[schemars(default, description = "Base URL of the Gerrit instance (overrides config)")]
+    #[schemars(
+        default,
+        description = "Base URL of the Gerrit instance (overrides config)"
+    )]
     pub gerrit_base_url: Option<String>,
 
     #[serde(default)]
@@ -94,7 +101,10 @@ pub struct QueryChangesByDateParams {
     pub message_substring: Option<String>,
 
     #[serde(default = "default_merged_status")]
-    #[schemars(default, description = "Change status filter (merged, abandoned, open)")]
+    #[schemars(
+        default,
+        description = "Change status filter (merged, abandoned, open)"
+    )]
     pub status: Option<String>,
 }
 
@@ -106,7 +116,10 @@ pub struct GetChangeDetailsParams {
     pub change_id: String,
 
     #[serde(default)]
-    #[schemars(default, description = "Base URL of the Gerrit instance (overrides config)")]
+    #[schemars(
+        default,
+        description = "Base URL of the Gerrit instance (overrides config)"
+    )]
     pub gerrit_base_url: Option<String>,
 
     #[serde(default)]
@@ -125,7 +138,10 @@ pub struct GetCommitMessageParams {
     pub change_id: String,
 
     #[serde(default)]
-    #[schemars(default, description = "Base URL of the Gerrit instance (overrides config)")]
+    #[schemars(
+        default,
+        description = "Base URL of the Gerrit instance (overrides config)"
+    )]
     pub gerrit_base_url: Option<String>,
 }
 
@@ -137,7 +153,10 @@ pub struct ListChangeFilesParams {
     pub change_id: String,
 
     #[serde(default)]
-    #[schemars(default, description = "Base URL of the Gerrit instance (overrides config)")]
+    #[schemars(
+        default,
+        description = "Base URL of the Gerrit instance (overrides config)"
+    )]
     pub gerrit_base_url: Option<String>,
 }
 
@@ -152,7 +171,10 @@ pub struct GetFileDiffParams {
     pub file_path: String,
 
     #[serde(default)]
-    #[schemars(default, description = "Base URL of the Gerrit instance (overrides config)")]
+    #[schemars(
+        default,
+        description = "Base URL of the Gerrit instance (overrides config)"
+    )]
     pub gerrit_base_url: Option<String>,
 }
 
@@ -164,7 +186,10 @@ pub struct ListChangeCommentsParams {
     pub change_id: String,
 
     #[serde(default)]
-    #[schemars(default, description = "Base URL of the Gerrit instance (overrides config)")]
+    #[schemars(
+        default,
+        description = "Base URL of the Gerrit instance (overrides config)"
+    )]
     pub gerrit_base_url: Option<String>,
 }
 
@@ -176,7 +201,10 @@ pub struct ListDraftCommentsParams {
     pub change_id: String,
 
     #[serde(default)]
-    #[schemars(default, description = "Base URL of the Gerrit instance (overrides config)")]
+    #[schemars(
+        default,
+        description = "Base URL of the Gerrit instance (overrides config)"
+    )]
     pub gerrit_base_url: Option<String>,
 }
 
@@ -188,7 +216,10 @@ pub struct GetMostRecentClParams {
     pub user: String,
 
     #[serde(default)]
-    #[schemars(default, description = "Base URL of the Gerrit instance (overrides config)")]
+    #[schemars(
+        default,
+        description = "Base URL of the Gerrit instance (overrides config)"
+    )]
     pub gerrit_base_url: Option<String>,
 }
 
@@ -200,7 +231,10 @@ pub struct GetBugsFromClParams {
     pub change_id: String,
 
     #[serde(default)]
-    #[schemars(default, description = "Base URL of the Gerrit instance (overrides config)")]
+    #[schemars(
+        default,
+        description = "Base URL of the Gerrit instance (overrides config)"
+    )]
     pub gerrit_base_url: Option<String>,
 }
 
@@ -215,11 +249,17 @@ pub struct SuggestReviewersParams {
     pub query: String,
 
     #[serde(default)]
-    #[schemars(default, description = "Maximum number of reviewer suggestions to return")]
+    #[schemars(
+        default,
+        description = "Maximum number of reviewer suggestions to return"
+    )]
     pub limit: Option<u32>,
 
     #[serde(default = "default_false")]
-    #[schemars(default, description = "Whether to exclude group members from suggestions")]
+    #[schemars(
+        default,
+        description = "Whether to exclude group members from suggestions"
+    )]
     pub exclude_groups: Option<bool>,
 
     #[serde(default)]
@@ -227,7 +267,10 @@ pub struct SuggestReviewersParams {
     pub reviewer_state: Option<String>,
 
     #[serde(default)]
-    #[schemars(default, description = "Base URL of the Gerrit instance (overrides config)")]
+    #[schemars(
+        default,
+        description = "Base URL of the Gerrit instance (overrides config)"
+    )]
     pub gerrit_base_url: Option<String>,
 }
 
@@ -239,7 +282,10 @@ pub struct ChangesSubmittedTogetherParams {
     pub change_id: String,
 
     #[serde(default)]
-    #[schemars(default, description = "Base URL of the Gerrit instance (overrides config)")]
+    #[schemars(
+        default,
+        description = "Base URL of the Gerrit instance (overrides config)"
+    )]
     pub gerrit_base_url: Option<String>,
 
     #[serde(default)]
@@ -276,7 +322,10 @@ pub struct CreateChangeParams {
     pub status: Option<String>,
 
     #[serde(default)]
-    #[schemars(default, description = "Base URL of the Gerrit instance (overrides config)")]
+    #[schemars(
+        default,
+        description = "Base URL of the Gerrit instance (overrides config)"
+    )]
     pub gerrit_base_url: Option<String>,
 }
 
@@ -291,7 +340,10 @@ pub struct AddReviewerParams {
     pub reviewer: String,
 
     #[serde(default)]
-    #[schemars(default, description = "Base URL of the Gerrit instance (overrides config)")]
+    #[schemars(
+        default,
+        description = "Base URL of the Gerrit instance (overrides config)"
+    )]
     pub gerrit_base_url: Option<String>,
 
     #[serde(default = "default_reviewer_state")]
@@ -318,7 +370,10 @@ pub struct SetWipParams {
     pub change_id: String,
 
     #[serde(default)]
-    #[schemars(default, description = "Optional message explaining why the change is WIP")]
+    #[schemars(
+        default,
+        description = "Optional message explaining why the change is WIP"
+    )]
     pub message: Option<String>,
 
     #[schemars(description = "Base URL of the Gerrit instance (overrides config)")]
@@ -347,7 +402,10 @@ pub struct AbandonChangeParams {
     pub change_id: String,
 
     #[serde(default)]
-    #[schemars(default, description = "Optional message explaining the reason for abandonment")]
+    #[schemars(
+        default,
+        description = "Optional message explaining the reason for abandonment"
+    )]
     pub message: Option<String>,
 
     #[schemars(description = "Base URL of the Gerrit instance (overrides config)")]
@@ -408,7 +466,10 @@ pub struct PostReviewCommentParams {
     pub gerrit_base_url: String,
 
     #[serde(default)]
-    #[schemars(default, description = "Vote labels as key-value pairs (e.g. 'Code-Review': 1)")]
+    #[schemars(
+        default,
+        description = "Vote labels as key-value pairs (e.g. 'Code-Review': 1)"
+    )]
     pub labels: Option<BTreeMap<String, i32>>,
 }
 
@@ -436,31 +497,19 @@ pub struct PostDraftCommentParams {
     pub gerrit_base_url: String,
 
     #[serde(default)]
-    #[schemars(
-        default,
-        description = "Start line for a range comment"
-    )]
+    #[schemars(default, description = "Start line for a range comment")]
     pub start_line: Option<u64>,
 
     #[serde(default)]
-    #[schemars(
-        default,
-        description = "Start character offset for a range comment"
-    )]
+    #[schemars(default, description = "Start character offset for a range comment")]
     pub start_character: Option<u64>,
 
     #[serde(default)]
-    #[schemars(
-        default,
-        description = "End line for a range comment"
-    )]
+    #[schemars(default, description = "End line for a range comment")]
     pub end_line: Option<u64>,
 
     #[serde(default)]
-    #[schemars(
-        default,
-        description = "End character offset for a range comment"
-    )]
+    #[schemars(default, description = "End character offset for a range comment")]
     pub end_character: Option<u64>,
 
     #[serde(default)]
@@ -539,7 +588,10 @@ pub struct CherryPickChangeParams {
     pub message: Option<String>,
 
     #[serde(default = "default_false")]
-    #[schemars(default, description = "Whether to keep original reviewers on the cherry-pick")]
+    #[schemars(
+        default,
+        description = "Whether to keep original reviewers on the cherry-pick"
+    )]
     pub keep_reviewers: Option<bool>,
 
     #[serde(default = "default_true")]
@@ -569,7 +621,10 @@ pub struct CherryPickChainParams {
     pub revision_id: Option<String>,
 
     #[serde(default = "default_false")]
-    #[schemars(default, description = "Whether to keep original reviewers on the cherry-pick")]
+    #[schemars(
+        default,
+        description = "Whether to keep original reviewers on the cherry-pick"
+    )]
     pub keep_reviewers: Option<bool>,
 
     #[serde(default = "default_true")]
@@ -648,10 +703,9 @@ mod tests {
 
     #[test]
     fn query_changes_by_date_params_defaults() {
-        let params: QueryChangesByDateParams = serde_json::from_str(
-            r#"{"start_date": "2026-01-01", "end_date": "2026-01-31"}"#,
-        )
-        .unwrap();
+        let params: QueryChangesByDateParams =
+            serde_json::from_str(r#"{"start_date": "2026-01-01", "end_date": "2026-01-31"}"#)
+                .unwrap();
         assert_eq!(params.status, Some("merged".to_string()));
         assert_eq!(params.limit, None);
         assert_eq!(params.project, None);
@@ -668,10 +722,9 @@ mod tests {
 
     #[test]
     fn add_reviewer_params_defaults() {
-        let params: AddReviewerParams = serde_json::from_str(
-            r#"{"change_id": "123", "reviewer": "user@example.com"}"#,
-        )
-        .unwrap();
+        let params: AddReviewerParams =
+            serde_json::from_str(r#"{"change_id": "123", "reviewer": "user@example.com"}"#)
+                .unwrap();
         assert_eq!(params.state, Some("REVIEWER".to_string()));
     }
 

@@ -403,10 +403,7 @@ allowed_hosts = ["gerrit.example.com"]
         assert_eq!(config.gerrit.base_url, "https://gerrit.example.com");
         assert_eq!(config.gerrit.auth.mode, "basic");
         assert_eq!(config.transport.mode, "http");
-        assert_eq!(
-            config.transport.allowed_hosts,
-            vec!["gerrit.example.com"]
-        );
+        assert_eq!(config.transport.allowed_hosts, vec!["gerrit.example.com"]);
     }
 
     #[test]

@@ -58,15 +58,11 @@ async fn main() -> anyhow::Result<()> {
 
     tracing_subscriber::fmt()
         .with_env_filter(
-            EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new(&config.log.level)),
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(&config.log.level)),
         )
         .init();
 
-    tracing::info!(
-        version = env!("CARGO_PKG_VERSION"),
-        "gerrit-mcp starting"
-    );
+    tracing::info!(version = env!("CARGO_PKG_VERSION"), "gerrit-mcp starting");
 
     let auth = resolve_auth(&config)?;
 
@@ -91,50 +87,34 @@ async fn main() -> anyhow::Result<()> {
 fn resolve_auth(config: &Config) -> anyhow::Result<AuthMode> {
     match config.gerrit.auth.mode.as_str() {
         "http_basic" | "basic" => {
-            let username = config
-                .gerrit
-                .auth
-                .username
-                .clone()
-                .ok_or_else(|| anyhow::anyhow!("http_basic auth mode requires username (set via GERRIT_USER env or config)"))?;
-            let password = config
-                .gerrit
-                .auth
-                .auth_token
-                .clone()
-                .unwrap_or_default();
+            let username = config.gerrit.auth.username.clone().ok_or_else(|| {
+                anyhow::anyhow!(
+                    "http_basic auth mode requires username (set via GERRIT_USER env or config)"
+                )
+            })?;
+            let password = config.gerrit.auth.auth_token.clone().unwrap_or_default();
             Ok(AuthMode::HttpBasic { username, password })
         }
         "git_cookies" => {
-            let path = config
-                .gerrit
-                .auth
-                .gitcookies_path
-                .clone()
-                .ok_or_else(|| {
-                    anyhow::anyhow!("git_cookies auth mode requires gitcookies_path in config")
-                })?;
+            let path = config.gerrit.auth.gitcookies_path.clone().ok_or_else(|| {
+                anyhow::anyhow!("git_cookies auth mode requires gitcookies_path in config")
+            })?;
             Ok(AuthMode::GitCookies {
                 gitcookies_path: PathBuf::from(path),
             })
         }
         "bearer" | "token" => {
-            let token = config
-                .gerrit
-                .auth
-                .bearer_token
-                .clone()
-                .ok_or_else(|| {
-                    anyhow::anyhow!(
-                        "bearer auth mode requires {} env var to be set",
-                        config
-                            .gerrit
-                            .auth
-                            .token_env
-                            .as_deref()
-                            .unwrap_or("GERRIT_TOKEN")
-                    )
-                })?;
+            let token = config.gerrit.auth.bearer_token.clone().ok_or_else(|| {
+                anyhow::anyhow!(
+                    "bearer auth mode requires {} env var to be set",
+                    config
+                        .gerrit
+                        .auth
+                        .token_env
+                        .as_deref()
+                        .unwrap_or("GERRIT_TOKEN")
+                )
+            })?;
             Ok(AuthMode::Bearer(token))
         }
         "none" => {

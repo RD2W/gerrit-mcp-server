@@ -13,9 +13,7 @@ pub async fn run_stdio<R: GerritRepository + Send + Sync + 'static>(
     server: GerritServer<R>,
 ) -> anyhow::Result<()> {
     tracing::info!("starting stdio transport");
-    let handle = server
-        .serve(rmcp::transport::io::stdio())
-        .await?;
+    let handle = server.serve(rmcp::transport::io::stdio()).await?;
     handle.waiting().await?;
     Ok(())
 }

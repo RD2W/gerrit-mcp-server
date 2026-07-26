@@ -9,11 +9,7 @@ use std::sync::Arc;
 use gerrit_core::domain::*;
 use regex_lite::Regex;
 use rmcp::{
-    handler::server::{
-        tool::ToolRouter,
-        wrapper::Parameters,
-        ServerHandler,
-    },
+    handler::server::{ServerHandler, tool::ToolRouter, wrapper::Parameters},
     model::{CallToolResult, ContentBlock, ServerCapabilities, ServerInfo},
     tool, tool_handler, tool_router,
 };
@@ -28,10 +24,10 @@ fn extract_bugs(commit_message: &str) -> Vec<String> {
         if let Some(m) = cap.get(1) {
             for part in m.as_str().split(',') {
                 let trimmed = part.trim();
-                if let Some(num) = trimmed.split(|c: char| !c.is_ascii_digit()).next() {
-                    if !num.is_empty() {
-                        bugs.push(num.to_string());
-                    }
+                if let Some(num) = trimmed.split(|c: char| !c.is_ascii_digit()).next()
+                    && !num.is_empty()
+                {
+                    bugs.push(num.to_string());
                 }
             }
         }
@@ -112,17 +108,13 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         {
             Ok(mut changes) => {
                 if changes.is_empty() {
-                    return self
-                        .text(format!("No changes found for query: {}", params.query));
+                    return self.text(format!("No changes found for query: {}", params.query));
                 }
                 sort_by_date(&mut changes);
                 let mut lines = Vec::new();
                 for c in &changes {
                     let wip = if c.work_in_progress { "[WIP] " } else { "" };
-                    lines.push(format!(
-                        "{}_{}: {}{}",
-                        c._number, c.updated, wip, c.subject
-                    ));
+                    lines.push(format!("{}_{}: {}{}", c._number, c.updated, wip, c.subject));
                 }
                 self.text(lines.join("\n"))
             }
@@ -149,7 +141,10 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
             .to_string();
 
         let status = params.status.as_deref().unwrap_or("merged");
-        let mut query = format!("status:{} after:{} before:{}", status, params.start_date, end_plus_one);
+        let mut query = format!(
+            "status:{} after:{} before:{}",
+            status, params.start_date, end_plus_one
+        );
 
         if let Some(ref project) = params.project {
             query.push_str(&format!(" project:{}", project));
@@ -168,10 +163,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
                 let mut lines = Vec::new();
                 for c in &changes {
                     let wip = if c.work_in_progress { "[WIP] " } else { "" };
-                    lines.push(format!(
-                        "{}_{}: {}{}",
-                        c._number, c.updated, wip, c.subject
-                    ));
+                    lines.push(format!("{}_{}: {}{}", c._number, c.updated, wip, c.subject));
                 }
                 self.text(lines.join("\n"))
             }
@@ -212,14 +204,13 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
                     lines.push(format!("Bugs: {}", bugs.join(", ")));
                 }
 
-                if let Some(ref reviewers) = detail.reviewers {
-                    if let Some(reviewer_list) = reviewers.get("REVIEWER") {
-                        if !reviewer_list.is_empty() {
-                            for r in reviewer_list {
-                                if let Some(ref email) = r.email {
-                                    lines.push(format!("Reviewer: {}", email));
-                                }
-                            }
+                if let Some(ref reviewers) = detail.reviewers
+                    && let Some(reviewer_list) = reviewers.get("REVIEWER")
+                    && !reviewer_list.is_empty()
+                {
+                    for r in reviewer_list {
+                        if let Some(ref email) = r.email {
+                            lines.push(format!("Reviewer: {}", email));
                         }
                     }
                 }
@@ -235,8 +226,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
                     }
                 }
 
-                let recent: Vec<&Message> =
-                    detail.messages.iter().rev().take(3).collect();
+                let recent: Vec<&Message> = detail.messages.iter().rev().take(3).collect();
                 if !recent.is_empty() {
                     lines.push("Recent messages:".to_string());
                     for msg in recent.iter().rev() {
@@ -245,10 +235,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
                             .as_ref()
                             .and_then(|a| a.email.clone())
                             .unwrap_or_else(|| "unknown".to_string());
-                        lines.push(format!(
-                            "  [{}] {}: {}",
-                            msg.date, author, msg.message
-                        ));
+                        lines.push(format!("  [{}] {}: {}", msg.date, author, msg.message));
                     }
                 }
 
@@ -488,10 +475,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
                 for s in &suggestions {
                     if let Some(ref account) = s.account {
                         let name = account.name.as_deref().unwrap_or("unknown");
-                        let email = account
-                            .email
-                            .as_deref()
-                            .unwrap_or("no email");
+                        let email = account.email.as_deref().unwrap_or("no email");
                         lines.push(format!("Account: {} <{}>", name, email));
                     }
                     if let Some(ref group) = s.group {
@@ -556,9 +540,10 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
             new_branch: None,
         };
         match self.repo.create_change(&payload).await {
-            Ok(change) => {
-                self.text(format!("Created change {}_{}: {}", change._number, change.updated, change.subject))
-            }
+            Ok(change) => self.text(format!(
+                "Created change {}_{}: {}",
+                change._number, change.updated, change.subject
+            )),
             Err(e) => self.error(format!("Failed to create change: {e}")),
         }
     }
@@ -573,8 +558,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
     ) -> CallToolResult {
         let state = params.state.as_deref().unwrap_or("REVIEWER");
         if state != "REVIEWER" && state != "CC" {
-            return self
-                .error(format!("Invalid state '{}': must be REVIEWER or CC", state));
+            return self.error(format!("Invalid state '{}': must be REVIEWER or CC", state));
         }
         let payload = AddReviewerRequest {
             reviewer: params.reviewer,
@@ -636,32 +620,19 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         }
     }
 
-    #[tool(
-        name = "set_topic",
-        description = "Set the topic for a Gerrit change"
-    )]
-    async fn set_topic(
-        &self,
-        Parameters(params): Parameters<SetTopicParams>,
-    ) -> CallToolResult {
+    #[tool(name = "set_topic", description = "Set the topic for a Gerrit change")]
+    async fn set_topic(&self, Parameters(params): Parameters<SetTopicParams>) -> CallToolResult {
         let payload = TopicRequest {
             topic: params.topic.clone(),
         };
         match self.repo.set_topic(&params.change_id, &payload).await {
-            Ok(Some(_response)) => {
-                self.text(format!("Topic set to '{}'.", params.topic))
-            }
-            Ok(None) => {
-                self.text("Topic deleted (empty response).".to_string())
-            }
+            Ok(Some(_response)) => self.text(format!("Topic set to '{}'.", params.topic)),
+            Ok(None) => self.text("Topic deleted (empty response).".to_string()),
             Err(e) => self.error(format!("Failed to set topic: {e}")),
         }
     }
 
-    #[tool(
-        name = "abandon_change",
-        description = "Abandon a Gerrit change"
-    )]
+    #[tool(name = "abandon_change", description = "Abandon a Gerrit change")]
     async fn abandon_change(
         &self,
         Parameters(params): Parameters<AbandonChangeParams>,
@@ -670,11 +641,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
             message: params.message,
             notify: None,
         };
-        match self
-            .repo
-            .abandon_change(&params.change_id, &payload)
-            .await
-        {
+        match self.repo.abandon_change(&params.change_id, &payload).await {
             Ok(change) => self.text(format!(
                 "Change {} abandoned: {}",
                 change._number, change.subject
@@ -701,10 +668,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         }
     }
 
-    #[tool(
-        name = "revert_submission",
-        description = "Revert a Gerrit submission"
-    )]
+    #[tool(name = "revert_submission", description = "Revert a Gerrit submission")]
     async fn revert_submission(
         &self,
         Parameters(params): Parameters<RevertSubmissionParams>,
@@ -722,10 +686,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
                 if lines.is_empty() {
                     self.text("No revert changes created.".to_string())
                 } else {
-                    self.text(format!(
-                        "Revert changes created:\n{}",
-                        lines.join("\n")
-                    ))
+                    self.text(format!("Revert changes created:\n{}", lines.join("\n")))
                 }
             }
             Err(e) => self.error(format!("Failed to revert submission: {e}")),
@@ -776,7 +737,11 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
     ) -> CallToolResult {
         let mut message = params.message.clone();
         let suggestion = if message.starts_with("suggestion:") {
-            let s = message.strip_prefix("suggestion:").unwrap_or("").trim().to_string();
+            let s = message
+                .strip_prefix("suggestion:")
+                .unwrap_or("")
+                .trim()
+                .to_string();
             message = s;
             params.suggestion.or(Some(message.clone()))
         } else {
@@ -847,7 +812,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         };
 
         let mut draft_ids: Vec<String> = Vec::new();
-        for (_, file_drafts) in &drafts {
+        for file_drafts in drafts.values() {
             for d in file_drafts {
                 draft_ids.push(d.id.clone());
             }
@@ -863,7 +828,11 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         }
 
         let mut lines = Vec::new();
-        lines.push(format!("Deleted {} of {} draft comments.", deleted, draft_ids.len()));
+        lines.push(format!(
+            "Deleted {} of {} draft comments.",
+            deleted,
+            draft_ids.len()
+        ));
         if !errors.is_empty() {
             lines.push("Errors:".to_string());
             lines.extend(errors);
@@ -894,10 +863,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         &self,
         Parameters(params): Parameters<CherryPickChangeParams>,
     ) -> CallToolResult {
-        let revision = params
-            .revision_id
-            .as_deref()
-            .unwrap_or("current");
+        let revision = params.revision_id.as_deref().unwrap_or("current");
         let payload = CherryPickRequest {
             message: params.message,
             destination: params.destination,
@@ -926,10 +892,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         &self,
         Parameters(params): Parameters<CherryPickChainParams>,
     ) -> CallToolResult {
-        let revision = params
-            .revision_id
-            .as_deref()
-            .unwrap_or("current");
+        let revision = params.revision_id.as_deref().unwrap_or("current");
 
         let related = match self.repo.get_related(&params.change_id, revision).await {
             Ok(r) => r,
@@ -969,18 +932,15 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
                         change_id_str, revision_str, new_number
                     ));
 
-                    let base_opts = vec![
-                        "CURRENT_REVISION".to_string(),
-                        "CURRENT_COMMIT".to_string(),
-                    ];
+                    let base_opts =
+                        vec!["CURRENT_REVISION".to_string(), "CURRENT_COMMIT".to_string()];
                     match self.repo.get_change_detail(&new_id, &base_opts).await {
                         Ok(detail) => {
-                            if let Some(ref rev_key) = detail.current_revision {
-                                if let Some(ref rev_info) = detail.revisions.get(rev_key) {
-                                    if let Some(ref commit) = rev_info.commit {
-                                        base = Some(commit.message.clone());
-                                    }
-                                }
+                            if let Some(ref rev_key) = detail.current_revision
+                                && let Some(rev_info) = detail.revisions.get(rev_key)
+                                && let Some(ref commit) = rev_info.commit
+                            {
+                                base = Some(commit.message.clone());
                             }
                             if base.is_none() {
                                 base = Some(new_id);
@@ -1016,7 +976,10 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         ))
     }
 
-    #[tool(name = "submit_change", description = "Submit a Gerrit change for merge")]
+    #[tool(
+        name = "submit_change",
+        description = "Submit a Gerrit change for merge"
+    )]
     async fn submit_change(
         &self,
         Parameters(params): Parameters<SubmitChangeParams>,
@@ -1027,12 +990,10 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
             notify: None,
         };
         match self.repo.submit_change(&params.change_id, &payload).await {
-            Ok(result) => {
-                self.text(format!(
-                    "Successfully submitted change {}: status={}",
-                    result._number, result.status
-                ))
-            }
+            Ok(result) => self.text(format!(
+                "Successfully submitted change {}: status={}",
+                result._number, result.status
+            )),
             Err(e) => self.error(format!("Failed to submit change: {e}")),
         }
     }
@@ -1041,8 +1002,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
 #[tool_handler]
 impl<R: GerritRepository + Send + Sync + 'static> ServerHandler for GerritServer<R> {
     fn get_info(&self) -> ServerInfo {
-        let mut info =
-            ServerInfo::new(ServerCapabilities::builder().enable_tools().build());
+        let mut info = ServerInfo::new(ServerCapabilities::builder().enable_tools().build());
         info.instructions = Some(
             "Gerrit MCP server for code review. Provides tools for querying changes, \
              reviewing code, managing reviews, cherry-picking, and submitting changes."
@@ -1097,9 +1057,7 @@ mod tests {
             limit: None,
             options: None,
         };
-        let result = server
-            .query_changes(Parameters(params))
-            .await;
+        let result = server.query_changes(Parameters(params)).await;
         let text = extract_text(result);
         assert!(text.contains("No changes found for query: status:open"));
     }
@@ -1116,9 +1074,7 @@ mod tests {
             limit: None,
             options: None,
         };
-        let result = server
-            .query_changes(Parameters(params))
-            .await;
+        let result = server.query_changes(Parameters(params)).await;
         let text = extract_text(result);
         assert!(text.contains("12345_"));
         assert!(text.contains("Test Subject"));
@@ -1144,9 +1100,7 @@ mod tests {
             allow_empty: None,
             gerrit_base_url: "https://g.example.com".to_string(),
         };
-        let result = server
-            .cherry_pick_change(Parameters(params))
-            .await;
+        let result = server.cherry_pick_change(Parameters(params)).await;
         let text = extract_text(result);
         assert!(text.contains("Successfully cherry-picked"));
         assert!(text.contains("999"));
@@ -1242,9 +1196,7 @@ mod tests {
             allow_empty: None,
             gerrit_base_url: "https://g.example.com".to_string(),
         };
-        let result = server
-            .cherry_pick_chain(Parameters(params))
-            .await;
+        let result = server.cherry_pick_chain(Parameters(params)).await;
         let text = extract_text(result);
         assert!(text.contains("Successfully cherry-picked chain of 2"));
     }
@@ -1265,9 +1217,7 @@ mod tests {
             wait_for_merge: None,
             gerrit_base_url: "https://g.example.com".to_string(),
         };
-        let result = server
-            .submit_change(Parameters(params))
-            .await;
+        let result = server.submit_change(Parameters(params)).await;
         let text = extract_text(result);
         assert!(text.contains("Successfully submitted"));
         assert!(text.contains("MERGED"));
@@ -1346,7 +1296,10 @@ mod tests {
     #[test]
     fn test_merge_options_dedup() {
         let base = &["CURRENT_REVISION", "CURRENT_COMMIT"];
-        let extra = vec!["CURRENT_REVISION".to_string(), "DETAILED_LABELS".to_string()];
+        let extra = vec![
+            "CURRENT_REVISION".to_string(),
+            "DETAILED_LABELS".to_string(),
+        ];
         let opts = GerritServer::<MockGerritRepository>::merge_options(base, &extra);
         assert_eq!(opts.len(), 3);
         assert!(opts.contains(&"CURRENT_REVISION".to_string()));
