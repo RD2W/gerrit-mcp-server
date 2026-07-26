@@ -109,10 +109,7 @@ impl<R: GerritRepository> GerritRepository for GerritService<R> {
         self.repo.get_commit_message(change_id).await
     }
 
-    async fn list_files(
-        &self,
-        change_id: &str,
-    ) -> Result<BTreeMap<String, FileInfo>, DomainError> {
+    async fn list_files(&self, change_id: &str) -> Result<BTreeMap<String, FileInfo>, DomainError> {
         self.acquire_rate_limit().await?;
         self.repo.list_files(change_id).await
     }
@@ -163,7 +160,9 @@ impl<R: GerritRepository> GerritRepository for GerritService<R> {
         options: &[String],
     ) -> Result<SubmittedTogether, DomainError> {
         self.acquire_rate_limit().await?;
-        self.repo.changes_submitted_together(change_id, options).await
+        self.repo
+            .changes_submitted_together(change_id, options)
+            .await
     }
 
     async fn create_change(&self, payload: &CreateChangeRequest) -> Result<Change, DomainError> {
@@ -284,5 +283,187 @@ impl<R: GerritRepository> GerritRepository for GerritService<R> {
     ) -> Result<SubmitResult, DomainError> {
         self.acquire_rate_limit().await?;
         self.repo.submit_change(change_id, payload).await
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_change(num: u64) -> Change {
+        Change {
+            id: format!("proj~master~I{num}"),
+            _number: num,
+            subject: format!("Change {num}"),
+            status: "NEW".into(),
+            project: "proj".into(),
+            branch: "master".into(),
+            owner: AccountInfo {
+                _account_id: 1,
+                name: None,
+                email: None,
+            },
+            updated: "2025-01-01".into(),
+            work_in_progress: false,
+        }
+    }
+
+    fn test_detail(num: u64) -> ChangeDetail {
+        ChangeDetail {
+            id: format!("proj~master~I{num}"),
+            _number: num,
+            subject: format!("Detail {num}"),
+            status: "NEW".into(),
+            project: "proj".into(),
+            branch: "master".into(),
+            owner: AccountInfo {
+                _account_id: 1,
+                name: None,
+                email: None,
+            },
+            updated: "2025-01-01".into(),
+            current_revision: None,
+            current_revision_number: None,
+            revisions: BTreeMap::new(),
+            labels: BTreeMap::new(),
+            reviewers: None,
+            messages: vec![],
+        }
+    }
+
+    #[tokio::test]
+    async fn delegates_to_repo_without_cache() {
+        let mock = MockGerritRepository::default();
+        mock.push_query_changes_result(Ok(vec![test_change(1)]));
+        let svc = GerritService::new(mock);
+        let result = svc.query_changes("test", None, &[]).await.unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0]._number, 1);
+    }
+
+    #[tokio::test]
+    async fn cache_hit_avoids_repo_call() {
+        let mock = Arc::new(MockGerritRepository::default());
+        mock.push_query_changes_result(Ok(vec![test_change(42)]));
+
+        let svc = GerritService {
+            repo: mock.clone(),
+            cache: Some(MemoryCache::new(Duration::from_secs(60), 100)),
+            rate_limiter: None,
+        };
+
+        let r1 = svc.query_changes("q", None, &[]).await.unwrap();
+        assert_eq!(r1[0]._number, 42);
+        assert_eq!(mock.query_changes_call_count(), 1);
+
+        let r2 = svc.query_changes("q", None, &[]).await.unwrap();
+        assert_eq!(r2[0]._number, 42);
+        assert_eq!(
+            mock.query_changes_call_count(),
+            1,
+            "second call should hit cache"
+        );
+    }
+
+    #[tokio::test]
+    async fn different_query_misses_cache() {
+        let mock = Arc::new(MockGerritRepository::default());
+        mock.push_query_changes_result(Ok(vec![test_change(2)]));
+        mock.push_query_changes_result(Ok(vec![test_change(1)]));
+
+        let svc = GerritService {
+            repo: mock.clone(),
+            cache: Some(MemoryCache::new(Duration::from_secs(60), 100)),
+            rate_limiter: None,
+        };
+
+        let r1 = svc.query_changes("q1", None, &[]).await.unwrap();
+        assert_eq!(r1[0]._number, 1);
+        assert_eq!(mock.query_changes_call_count(), 1);
+
+        let r2 = svc.query_changes("q2", None, &[]).await.unwrap();
+        assert_eq!(r2[0]._number, 2);
+        assert_eq!(mock.query_changes_call_count(), 2);
+    }
+
+    #[tokio::test]
+    async fn cache_detail_hit_avoids_repo() {
+        let mock = Arc::new(MockGerritRepository::default());
+        mock.push_get_change_detail_result(Ok(test_detail(99)));
+
+        let svc = GerritService {
+            repo: mock.clone(),
+            cache: Some(MemoryCache::new(Duration::from_secs(60), 100)),
+            rate_limiter: None,
+        };
+
+        let d1 = svc.get_change_detail("99", &[]).await.unwrap();
+        assert_eq!(d1._number, 99);
+
+        let d2 = svc.get_change_detail("99", &[]).await.unwrap();
+        assert_eq!(d2._number, 99);
+    }
+
+    #[tokio::test]
+    async fn rate_limiter_allows_call() {
+        let mock = MockGerritRepository::default();
+        mock.push_query_changes_result(Ok(vec![test_change(1)]));
+        let svc = GerritService::new(mock).with_rate_limit(1000, 500);
+        let result = svc.query_changes("test", None, &[]).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn write_operations_not_cached() {
+        let mock = MockGerritRepository::default();
+        mock.push_create_change_result(Ok(test_change(77)));
+        let svc = GerritService::new(mock)
+            .with_cache(Duration::from_secs(60), 100)
+            .with_rate_limit(100, 200);
+
+        let payload = CreateChangeRequest {
+            project: "p".into(),
+            branch: "b".into(),
+            subject: "s".into(),
+            topic: None,
+            status: None,
+            is_private: None,
+            work_in_progress: None,
+            base_change: None,
+            new_branch: None,
+        };
+        let result = svc.create_change(&payload).await.unwrap();
+        assert_eq!(result._number, 77);
+    }
+
+    #[tokio::test]
+    async fn error_from_repo_not_cached() {
+        let mock = Arc::new(MockGerritRepository::default());
+        mock.push_query_changes_result(Err(DomainError::HttpStatus {
+            status: 500,
+            body: "err".into(),
+        }));
+
+        let svc = GerritService {
+            repo: mock.clone(),
+            cache: Some(MemoryCache::new(Duration::from_secs(60), 100)),
+            rate_limiter: None,
+        };
+
+        let err = svc.query_changes("q", None, &[]).await.unwrap_err();
+        assert!(matches!(err, DomainError::HttpStatus { .. }));
+
+        mock.push_query_changes_result(Ok(vec![test_change(1)]));
+        let r = svc.query_changes("q", None, &[]).await.unwrap();
+        assert_eq!(r[0]._number, 1);
+        assert_eq!(
+            mock.query_changes_call_count(),
+            2,
+            "error result should NOT be cached"
+        );
     }
 }
