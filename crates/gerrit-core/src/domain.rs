@@ -258,7 +258,7 @@ pub struct Comment {
 // DraftComment
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DraftComment {
     pub id: String,
@@ -370,7 +370,7 @@ pub struct AddReviewerResult {
 // CommitInfo (for creating commits)
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommitInfo {
     pub message: String,

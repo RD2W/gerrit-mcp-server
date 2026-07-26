@@ -41,6 +41,7 @@ gerrit-core = { path = "crates/gerrit-core" }
 
 # Dev/test dependencies
 tempfile = "3"
+wiremock = "0.6"
 
 [profile.release]
 strip = true
