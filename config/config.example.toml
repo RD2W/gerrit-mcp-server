@@ -1,0 +1,118 @@
+# Gerrit MCP Server Configuration
+#
+# Copy this file to config.toml or config/config.toml and adjust.
+# Values can be overridden via environment variables (see comments).
+
+# ---------------------------------------------------------------------------
+# Gerrit connection settings
+# ---------------------------------------------------------------------------
+[gerrit]
+# Base URL of the Gerrit instance (required).
+# Environment: GERRIT_URL
+base_url = "https://gerrit.example.com"
+
+# HTTP request timeout in seconds.
+timeout_secs = 30
+
+# Path to custom CA certificate PEM file for TLS.
+# Environment: GERRIT_CA_CERT or SSL_CERT_FILE
+# ca_cert = "/path/to/ca-cert.pem"
+
+# Path to directory of CA certificate files for TLS.
+# Environment: SSL_CERT_DIR
+# ca_cert_dir = "/etc/ssl/certs"
+
+# Whether to verify TLS certificates.
+# Environment: GERRIT_VERIFY_SSL=false or GERRIT_VERIFY_SSL=0 to disable
+verify_ssl = true
+
+# ---------------------------------------------------------------------------
+# Gerrit authentication
+# ---------------------------------------------------------------------------
+[gerrit.auth]
+# Authentication mode: "none", "basic", or "token".
+mode = "none"
+
+# Environment variable name holding the Gerrit username (basic auth).
+# The value is read from that env var at startup, never from this file.
+# username_env = "GERRIT_USERNAME"
+
+# Environment variable name holding the HTTP auth token.
+# The value is read from that env var at startup, never from this file.
+# Default: GERRIT_AUTH_TOKEN
+# auth_token_env = "GERRIT_AUTH_TOKEN"
+
+# Environment variable name holding the bearer token.
+# The value is read from that env var at startup, never from this file.
+# Default: GERRIT_TOKEN
+# token_env = "GERRIT_TOKEN"
+
+# Path to a .gitcookies file for Gerrit authentication.
+# gitcookies_path = "/home/user/.gitcookies"
+
+# ---------------------------------------------------------------------------
+# Service behaviour
+# ---------------------------------------------------------------------------
+[service]
+# Default maximum number of results returned by queries.
+default_max_results = 25
+
+# ---------------------------------------------------------------------------
+# Cache settings
+# ---------------------------------------------------------------------------
+[cache]
+# Enable in-memory caching of Gerrit API responses.
+enabled = false
+
+# Time-to-live for cache entries in seconds.
+ttl_secs = 300
+
+# Maximum number of cache entries.
+max_entries = 1000
+
+# ---------------------------------------------------------------------------
+# Rate limiting
+# ---------------------------------------------------------------------------
+[rate_limit]
+# Enable rate limiting for outgoing Gerrit API requests.
+enabled = false
+
+# Maximum requests per second to the Gerrit API.
+requests_per_second = 10
+
+# Maximum burst size (tokens refilled at requests_per_second rate).
+burst = 20
+
+# ---------------------------------------------------------------------------
+# Transport settings (MCP protocol layer)
+# ---------------------------------------------------------------------------
+[transport]
+# Transport mode: "stdio", "http", or "both".
+mode = "both"
+
+# Bind address for the HTTP transport.
+bind_addr = "0.0.0.0:8080"
+
+# URL path for the MCP Streamable HTTP endpoint.
+http_path = "/mcp"
+
+# Health check endpoint path.
+health_path = "/healthz"
+
+# Readiness check endpoint path.
+ready_path = "/readyz"
+
+# Prometheus-compatible metrics endpoint path.
+metrics_path = "/metrics"
+
+# Allowed hostnames for Streamable HTTP Host header validation.
+# Leave empty to accept any host.
+# allowed_hosts = ["gerrit.example.com", "localhost:8080"]
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+[log]
+# Log level: "trace", "debug", "info", "warn", "error".
+# Environment: RUST_LOG
+level = "info"
