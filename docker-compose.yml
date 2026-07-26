@@ -1,0 +1,14 @@
+# Gerrit MCP Server — local development
+
+services:
+  gerrit-mcp:
+    build: .
+    image: gerrit-mcp:latest
+    container_name: gerrit-mcp
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    env_file:
+      - ./config/.env
+    volumes:
+      - ./config:/config:ro
