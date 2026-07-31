@@ -8,7 +8,7 @@ use std::sync::Arc;
 use axum::{Router, routing::get};
 use gerrit_core::domain::GerritRepository;
 use rmcp::transport::streamable_http_server::{
-    StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
+    StreamableHttpServerConfig, StreamableHttpService, session::never::NeverSessionManager,
 };
 
 use crate::config::Config;
@@ -32,7 +32,7 @@ pub async fn run_http<R: GerritRepository + Send + Sync + 'static>(
 
     let mcp_service = StreamableHttpService::new(
         service_factory,
-        Arc::new(LocalSessionManager::default()),
+        Arc::new(NeverSessionManager::default()),
         server_config,
     );
 

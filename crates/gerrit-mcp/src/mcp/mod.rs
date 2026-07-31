@@ -3,6 +3,7 @@
 
 pub mod tools;
 
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -10,7 +11,7 @@ use gerrit_core::domain::*;
 use regex_lite::Regex;
 use rmcp::{
     handler::server::{ServerHandler, tool::ToolRouter, wrapper::Parameters},
-    model::{CallToolResult, ContentBlock, ServerCapabilities, ServerInfo},
+    model::{CallToolResult, ContentBlock, ProtocolVersion, ServerCapabilities, ServerInfo},
     tool, tool_handler, tool_router,
 };
 
@@ -1026,6 +1027,10 @@ impl<R: GerritRepository + Send + Sync + 'static> ServerHandler for GerritServer
                 .into(),
         );
         info
+    }
+
+    fn supported_protocol_versions(&self) -> Cow<'static, [ProtocolVersion]> {
+        Cow::Borrowed(&[ProtocolVersion::V_2026_07_28, ProtocolVersion::V_2025_11_25])
     }
 }
 

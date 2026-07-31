@@ -83,7 +83,7 @@ other contexts.
 | Module | Purpose |
 |---|---|
 | `domain.rs` | All data types: `Change`, `Account`, `Group`, `Project`, `Review`, error types (`CoreError`) |
-| `application.rs` | High-level operations: `list_changes()`, `get_review()`, `query_accounts()`, with pagination, caching |
+| `application.rs` | High-level operations: `query_changes()`, `get_change_details()`, `submit_change()`, with pagination, caching |
 | `infrastructure/client.rs` | `reqwest`-based HTTP client: request building, auth header injection, response parsing |
 | `infrastructure/tls.rs` | TLS configuration: custom CA loading, rustls setup, PEM parsing |
 | `infrastructure/cache.rs` | In-memory cache with TTL eviction using `DashMap` |
@@ -96,7 +96,7 @@ other contexts.
 | `mcp/mod.rs` | MCP server initialisation, tool handler dispatch, error mapping (`CoreError` → MCP error codes) |
 | `mcp/tools.rs` | Tool type definitions with JSON Schema (schemars): names, descriptions, parameter types, defaults |
 | `config.rs` | Config loading: TOML parsing, env var overrides, validation |
-| `transport/http.rs` | Axum router: MCP endpoint, health, readiness, metrics |
+| `transport/http.rs` | Axum router with `NeverSessionManager` (stateless, MCP 2026-07-28 protocol): MCP endpoint, health, readiness, metrics |
 | `transport/stdio.rs` | stdin/stdout transport via rmcp |
 | `health.rs` | Health check handlers: liveness, readiness with Gerrit probe, Prometheus metrics collection |
 | `main.rs` | Entry point: CLI parsing, config init, transport selection, shutdown signal handling |
@@ -108,7 +108,7 @@ other contexts.
 ```
 LLM Client
   │
-  │  MCP request: { tool: "list_changes", params: { query: "...", project: "aosp" } }
+  │  MCP request: { tool: "query_changes", params: { query: "...", project: "aosp" } }
   ▼
 transport/stdio.rs or http.rs   ← receives MCP message
   │

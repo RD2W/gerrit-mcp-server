@@ -83,7 +83,7 @@ MCP** — это чистая HTTP-клиентская библиотека, к
 | Модуль | Назначение |
 |---|---|
 | `domain.rs` | Все типы данных: `Change`, `Account`, `Group`, `Project`, `Review`, типы ошибок (`CoreError`) |
-| `application.rs` | Высокоуровневые операции: `list_changes()`, `get_review()`, `query_accounts()`, с пагинацией и кэшированием |
+| `application.rs` | Высокоуровневые операции: `query_changes()`, `get_change_details()`, `submit_change()`, с пагинацией и кэшированием |
 | `infrastructure/client.rs` | HTTP-клиент на `reqwest`: формирование запросов, добавление заголовков аутентификации, разбор ответов |
 | `infrastructure/tls.rs` | TLS-конфигурация: загрузка пользовательских CA, настройка rustls, разбор PEM |
 | `infrastructure/cache.rs` | Кэш в памяти с TTL-вытеснением на основе `DashMap` |
@@ -96,7 +96,7 @@ MCP** — это чистая HTTP-клиентская библиотека, к
 | `mcp/mod.rs` | Инициализация MCP-сервера, диспетчеризация обработчиков инструментов, маппинг ошибок (`CoreError` → коды ошибок MCP) |
 | `mcp/tools.rs` | Определения типов инструментов с JSON Schema (schemars): имена, описания, типы параметров, значения по умолчанию |
 | `config.rs` | Загрузка конфигурации: разбор TOML, переопределение через env, валидация |
-| `transport/http.rs` | Маршрутизатор Axum: MCP-эндпоинт, health, readiness, metrics |
+| `transport/http.rs` | Маршрутизатор Axum с `NeverSessionManager` (stateless, протокол MCP 2026-07-28): MCP-эндпоинт, health, readiness, metrics |
 | `transport/stdio.rs` | Транспорт stdin/stdout через rmcp |
 | `health.rs` | Обработчики health check: живучесть, готовность с пробным запросом к Gerrit, сбор метрик Prometheus |
 | `main.rs` | Точка входа: разбор CLI, инициализация конфигурации, выбор транспорта, обработка сигналов завершения |
@@ -108,7 +108,7 @@ MCP** — это чистая HTTP-клиентская библиотека, к
 ```
 LLM-клиент
   │
-  │  MCP-запрос: { tool: "list_changes", params: { query: "...", project: "aosp" } }
+  │  MCP-запрос: { tool: "query_changes", params: { query: "...", project: "aosp" } }
   ▼
 transport/stdio.rs или http.rs   ← получение MCP-сообщения
   │

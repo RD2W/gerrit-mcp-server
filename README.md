@@ -143,7 +143,7 @@ Full documentation is available in `docs/en/`:
 ### Development
 
 ```bash
-cargo test                    # 102 tests
+cargo test                    # 199 tests
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 ```
