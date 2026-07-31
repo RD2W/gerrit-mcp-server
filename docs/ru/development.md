@@ -97,8 +97,8 @@ Workflow GitHub Actions: `.github/workflows/ci.yml`
 
 4. **Определите схему инструмента** в `gerrit-mcp/src/mcp/tools.rs`:
    ```rust
-   #[tool(description = "Получение изменения по ID")]
-   async fn get_change(
+    #[tool(description = "Получение изменения по ID")]
+    async fn get_change_details(
        change_id: String,
    ) -> Result<CallToolResult, McpError> {
        // …

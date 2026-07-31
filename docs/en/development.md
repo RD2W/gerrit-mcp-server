@@ -97,8 +97,8 @@ See any existing source file for the exact format.
 
 4. **Define the tool schema** in `gerrit-mcp/src/mcp/tools.rs`:
    ```rust
-   #[tool(description = "Get a single change by ID")]
-   async fn get_change(
+    #[tool(description = "Get a single change by ID")]
+    async fn get_change_details(
        change_id: String,
    ) -> Result<CallToolResult, McpError> {
        // …

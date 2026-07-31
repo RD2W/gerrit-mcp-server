@@ -31,14 +31,11 @@ LLM-агентам (Claude Desktop, Codex и др.) нужно взаимоде�
 
 | Категория | Инструменты |
 |---|---|
-| Изменения | `list_changes`, `get_change`, `get_change_detail`, `get_commit`, `get_topic`, `submit_change`, `abandon_change`, `restore_change`, `revert_change` |
-| Ревью | `list_reviewers`, `suggest_reviewers`, `get_review`, `set_review` |
-| Поиск | `query_changes` |
-| Аккаунты | `get_account`, `list_accounts`, `query_accounts` |
-| Группы | `list_groups`, `get_group`, `get_group_members` |
-| Проекты | `list_projects`, `get_project`, `create_project`, `get_project_config`, `list_branches`, `list_tags` |
-| Плагины | `list_plugins`, `get_plugin_status` |
-| Сервер | `get_server_info`, `get_server_version` |
+| Запрос изменений (5) | `query_changes`, `query_changes_by_date_and_filters`, `get_change_details`, `get_most_recent_cl`, `changes_submitted_together` |
+| Содержимое (6) | `get_commit_message`, `list_change_files`, `get_file_diff`, `list_change_comments`, `list_draft_comments`, `get_bugs_from_cl` |
+| Жизненный цикл (8) | `create_change`, `set_ready_for_review`, `set_work_in_progress`, `set_topic`, `abandon_change`, `revert_change`, `revert_submission`, `submit_change` |
+| Code review (7) | `add_reviewer`, `suggest_reviewers`, `post_review_comment`, `post_draft_comment`, `delete_draft_comment`, `delete_draft_comments`, `publish_drafts` |
+| Cherry-pick (2) | `cherry_pick_change`, `cherry_pick_chain` |
 
 Каждый инструмент описывает свои параметры через JSON Schema (schemars),
 поэтому LLM-клиенты автоматически знают ожидаемые входные и выходные данные —
@@ -103,7 +100,7 @@ LLM-агентам (Claude Desktop, Codex и др.) нужно взаимоде�
 
 ## Текущий статус
 
-**До версии 1.0.** HTTP-клиент, все 28 инструментов MCP, двойной транспорт,
+**v1.0.0.** HTTP-клиент, все 28 инструментов MCP, двойной транспорт,
 кэширование, ограничение частоты, TLS, health-эндпоинты и упаковка в Docker
-реализованы и покрыты тестами. API стабилен, но может изменяться до
-выхода версии 1.0.
+реализованы и покрыты **199 тестами**. Поддержка MCP 2026-07-28 (stateless
+Streamable HTTP, согласование протокола) с fallback на 2025-11-25.

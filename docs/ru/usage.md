@@ -174,75 +174,58 @@ healthcheck:
 
 Сервер предоставляет **28 инструментов**, покрывающих всё Gerrit REST API.
 
-### Инструменты для изменений
+### Запрос изменений
 
 | Инструмент | Описание | Основные параметры |
 |---|---|---|
-| `list_changes` | Список изменений с фильтрацией | `query`, `status`, `project`, `limit`, `offset` |
-| `get_change` | Получение изменения по ID | `change_id` |
-| `get_change_detail` | Изменение с дополнительными метаданными | `change_id` |
-| `get_commit` | Информация о коммите для ревизии | `change_id`, `revision_id` |
-| `get_topic` | Тема изменения | `change_id` |
-| `submit_change` | Отправка изменения | `change_id` |
-| `abandon_change` | Отказ от изменения | `change_id` |
-| `restore_change` | Восстановление отменённого изменения | `change_id` |
-| `revert_change` | Откат принятого изменения | `change_id` |
+| `query_changes` | Поиск изменений с синтаксисом Gerrit | `query`, `limit?`, `options?` |
+| `query_changes_by_date_and_filters` | Поиск изменений в диапазоне дат с фильтрами | `start_date`, `end_date`, `project?`, `message_substring?`, `status?`, `limit?` |
+| `get_change_details` | Детальная информация об изменении (ревизии, метки, ревьюеры) | `change_id`, `options?` |
+| `get_most_recent_cl` | Последнее изменение от пользователя | `user` |
+| `changes_submitted_together` | Изменения, отправленные вместе с данным | `change_id`, `options?` |
 
-### Инструменты для ревью
+### Содержимое изменений
 
 | Инструмент | Описание | Основные параметры |
 |---|---|---|
-| `list_reviewers` | Список ревьюеров изменения | `change_id` |
-| `suggest_reviewers` | Предложения ревьюеров | `change_id`, `query` |
-| `get_review` | Детали ревью для ревизии | `change_id`, `revision_id` |
-| `set_review` | Установка ревью для ревизии | `change_id`, `revision_id`, `message`, `labels`, `reviewers` |
+| `get_commit_message` | Сообщение коммита для изменения | `change_id` |
+| `list_change_files` | Список изменённых файлов | `change_id` |
+| `get_file_diff` | Diff для файла в изменении | `change_id`, `file_path` |
+| `list_change_comments` | Опубликованные комментарии | `change_id` |
+| `list_draft_comments` | Черновики комментариев | `change_id` |
+| `get_bugs_from_cl` | Извлечение ссылок на баги из изменения | `change_id` |
 
-### Инструменты поиска
-
-| Инструмент | Описание | Основные параметры |
-|---|---|---|
-| `query_changes` | Поиск изменений с синтаксисом Gerrit | `query`, `limit`, `offset`, `options` |
-
-### Инструменты для аккаунтов
+### Жизненный цикл изменений
 
 | Инструмент | Описание | Основные параметры |
 |---|---|---|
-| `get_account` | Детали аккаунта | `account_id` |
-| `list_accounts` | Список аккаунтов | `query`, `limit` |
-| `query_accounts` | Поиск аккаунтов | `query`, `limit` |
+| `create_change` | Создать новое изменение | `project`, `branch`, `subject`, `topic?`, `status?` |
+| `set_ready_for_review` | Пометить как готовое к ревью | `change_id` |
+| `set_work_in_progress` | Пометить как work-in-progress | `change_id`, `message?` |
+| `set_topic` | Установить тему изменения | `change_id`, `topic` |
+| `abandon_change` | Отказаться от изменения | `change_id`, `message?` |
+| `revert_change` | Откатить принятое изменение | `change_id`, `message?` |
+| `revert_submission` | Откатить отправку | `change_id`, `message?` |
+| `submit_change` | Отправить изменение на слияние | `change_id`, `wait_for_merge?` |
 
-### Инструменты для групп
-
-| Инструмент | Описание | Основные параметры |
-|---|---|---|
-| `list_groups` | Список групп | `query`, `limit` |
-| `get_group` | Детали группы | `group_id` |
-| `get_group_members` | Участники группы | `group_id` |
-
-### Инструменты для проектов
+### Code review
 
 | Инструмент | Описание | Основные параметры |
 |---|---|---|
-| `list_projects` | Список проектов | `query`, `limit`, `prefix` |
-| `get_project` | Детали проекта | `project_name` |
-| `create_project` | Создание проекта | `project_name`, `parent`, `branches` |
-| `get_project_config` | Конфигурация проекта | `project_name` |
-| `list_branches` | Ветки проекта | `project_name`, `limit` |
-| `list_tags` | Теги проекта | `project_name`, `limit` |
+| `add_reviewer` | Добавить ревьюера | `change_id`, `reviewer`, `state?` |
+| `suggest_reviewers` | Предложения ревьюеров | `change_id`, `query`, `limit?`, `exclude_groups?` |
+| `post_review_comment` | Опубликовать комментарий ревью | `change_id`, `file_path`, `line_number`, `message`, `unresolved?` |
+| `post_draft_comment` | Опубликовать черновик | `change_id`, `file_path`, `line_number`, `message`, `suggestion?`, `in_reply_to?` |
+| `delete_draft_comment` | Удалить конкретный черновик | `change_id`, `draft_id` |
+| `delete_draft_comments` | Удалить все черновики изменения | `change_id` |
+| `publish_drafts` | Опубликовать черновики | `change_id` |
 
-### Инструменты для плагинов
-
-| Инструмент | Описание | Основные параметры |
-|---|---|---|
-| `list_plugins` | Список установленных плагинов | — |
-| `get_plugin_status` | Статус плагина | `plugin_name` |
-
-### Инструменты для сервера
+### Cherry-pick
 
 | Инструмент | Описание | Основные параметры |
 |---|---|---|
-| `get_server_info` | Информация о сервере Gerrit | — |
-| `get_server_version` | Версия сервера Gerrit | — |
+| `cherry_pick_change` | Перенести изменение в другую ветку | `change_id`, `destination`, `revision_id?`, `message?` |
+| `cherry_pick_chain` | Перенести цепочку изменений | `change_id`, `destination`, `revision_id?` |
 
 ### Формат результатов
 

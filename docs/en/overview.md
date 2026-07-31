@@ -31,14 +31,11 @@ handling, rate limiting, and result formatting.
 
 | Category | Tools |
 |---|---|
-| Changes | `list_changes`, `get_change`, `get_change_detail`, `get_commit`, `get_topic`, `submit_change`, `abandon_change`, `restore_change`, `revert_change` |
-| Reviews | `list_reviewers`, `suggest_reviewers`, `get_review`, `set_review` |
-| Search | `query_changes` |
-| Accounts | `get_account`, `list_accounts`, `query_accounts` |
-| Groups | `list_groups`, `get_group`, `get_group_members` |
-| Projects | `list_projects`, `get_project`, `create_project`, `get_project_config`, `list_branches`, `list_tags` |
-| Plugins | `list_plugins`, `get_plugin_status` |
-| Server | `get_server_info`, `get_server_version` |
+| Querying changes (5) | `query_changes`, `query_changes_by_date_and_filters`, `get_change_details`, `get_most_recent_cl`, `changes_submitted_together` |
+| Change content (6) | `get_commit_message`, `list_change_files`, `get_file_diff`, `list_change_comments`, `list_draft_comments`, `get_bugs_from_cl` |
+| Change lifecycle (8) | `create_change`, `set_ready_for_review`, `set_work_in_progress`, `set_topic`, `abandon_change`, `revert_change`, `revert_submission`, `submit_change` |
+| Code review (7) | `add_reviewer`, `suggest_reviewers`, `post_review_comment`, `post_draft_comment`, `delete_draft_comment`, `delete_draft_comments`, `publish_drafts` |
+| Cherry-pick (2) | `cherry_pick_change`, `cherry_pick_chain` |
 
 Each tool declares its parameters via JSON Schema (schemars), so LLM clients
 automatically know the expected inputs and outputs — no manual prompt engineering
@@ -102,6 +99,7 @@ for local development and remote deployment.
 
 ## Current status
 
-**Pre-1.0.** The core HTTP client, all 28 MCP tools, dual transport, caching, rate
+**v1.0.0.** The core HTTP client, all 28 MCP tools, dual transport, caching, rate
 limiting, TLS, health endpoints, and Docker packaging are implemented and covered
-by tests. The API is stable but may evolve before 1.0.
+by **199 tests**. Supports MCP 2026-07-28 protocol (stateless Streamable HTTP,
+protocol negotiation) with legacy 2025-11-25 fallback.

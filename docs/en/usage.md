@@ -173,75 +173,58 @@ healthcheck:
 
 The server exposes **28 tools** covering the full Gerrit REST API.
 
-### Changes tools
+### Querying changes
 
 | Tool | Description | Key parameters |
 |---|---|---|
-| `list_changes` | List changes with optional filtering | `query`, `status`, `project`, `limit`, `offset` |
-| `get_change` | Get a single change by ID | `change_id` |
-| `get_change_detail` | Get change with extra metadata | `change_id` |
-| `get_commit` | Get commit info for a change revision | `change_id`, `revision_id` |
-| `get_topic` | Get the topic for a change | `change_id` |
-| `submit_change` | Submit a change | `change_id` |
-| `abandon_change` | Abandon a change | `change_id` |
-| `restore_change` | Restore an abandoned change | `change_id` |
-| `revert_change` | Revert a merged change | `change_id` |
+| `query_changes` | Search changes with Gerrit query syntax | `query`, `limit?`, `options?` |
+| `query_changes_by_date_and_filters` | Query changes in a date range with filters | `start_date`, `end_date`, `project?`, `message_substring?`, `status?`, `limit?` |
+| `get_change_details` | Get detailed change info (revisions, labels, reviewers) | `change_id`, `options?` |
+| `get_most_recent_cl` | Get the most recent change from a user | `user` |
+| `changes_submitted_together` | List changes submitted together with this one | `change_id`, `options?` |
 
-### Reviews tools
+### Change content
 
 | Tool | Description | Key parameters |
 |---|---|---|
-| `list_reviewers` | List reviewers for a change | `change_id` |
-| `suggest_reviewers` | Get reviewer suggestions | `change_id`, `query` |
-| `get_review` | Get review details for a revision | `change_id`, `revision_id` |
-| `set_review` | Set a review on a revision | `change_id`, `revision_id`, `message`, `labels`, `reviewers` |
+| `get_commit_message` | Get commit message for a change | `change_id` |
+| `list_change_files` | List files modified in a change | `change_id` |
+| `get_file_diff` | Get the diff for a file in a change | `change_id`, `file_path` |
+| `list_change_comments` | List published comments on a change | `change_id` |
+| `list_draft_comments` | List draft comments on a change | `change_id` |
+| `get_bugs_from_cl` | Extract bug references from a change | `change_id` |
 
-### Search tools
-
-| Tool | Description | Key parameters |
-|---|---|---|
-| `query_changes` | Search changes with Gerrit query syntax | `query`, `limit`, `offset`, `options` |
-
-### Accounts tools
+### Change lifecycle
 
 | Tool | Description | Key parameters |
 |---|---|---|
-| `get_account` | Get account details | `account_id` |
-| `list_accounts` | List accounts | `query`, `limit` |
-| `query_accounts` | Query accounts with Gerrit search | `query`, `limit` |
+| `create_change` | Create a new change | `project`, `branch`, `subject`, `topic?`, `status?` |
+| `set_ready_for_review` | Mark a change as ready for review | `change_id` |
+| `set_work_in_progress` | Mark a change as work-in-progress | `change_id`, `message?` |
+| `set_topic` | Set the topic for a change | `change_id`, `topic` |
+| `abandon_change` | Abandon a change | `change_id`, `message?` |
+| `revert_change` | Revert a merged change | `change_id`, `message?` |
+| `revert_submission` | Revert a submission | `change_id`, `message?` |
+| `submit_change` | Submit a change for merge | `change_id`, `wait_for_merge?` |
 
-### Groups tools
-
-| Tool | Description | Key parameters |
-|---|---|---|
-| `list_groups` | List groups | `query`, `limit` |
-| `get_group` | Get group details | `group_id` |
-| `get_group_members` | List members of a group | `group_id` |
-
-### Projects tools
+### Code review
 
 | Tool | Description | Key parameters |
 |---|---|---|
-| `list_projects` | List projects | `query`, `limit`, `prefix` |
-| `get_project` | Get project details | `project_name` |
-| `create_project` | Create a new project | `project_name`, `parent`, `branches` |
-| `get_project_config` | Get project configuration | `project_name` |
-| `list_branches` | List branches for a project | `project_name`, `limit` |
-| `list_tags` | List tags for a project | `project_name`, `limit` |
+| `add_reviewer` | Add a reviewer to a change | `change_id`, `reviewer`, `state?` |
+| `suggest_reviewers` | Get reviewer suggestions | `change_id`, `query`, `limit?`, `exclude_groups?` |
+| `post_review_comment` | Post a review comment | `change_id`, `file_path`, `line_number`, `message`, `unresolved?` |
+| `post_draft_comment` | Post a draft comment | `change_id`, `file_path`, `line_number`, `message`, `suggestion?`, `in_reply_to?` |
+| `delete_draft_comment` | Delete a specific draft | `change_id`, `draft_id` |
+| `delete_draft_comments` | Delete all drafts on a change | `change_id` |
+| `publish_drafts` | Publish draft comments | `change_id` |
 
-### Plugins tools
-
-| Tool | Description | Key parameters |
-|---|---|---|
-| `list_plugins` | List installed plugins | — |
-| `get_plugin_status` | Get plugin status | `plugin_name` |
-
-### Server tools
+### Cherry-pick
 
 | Tool | Description | Key parameters |
 |---|---|---|
-| `get_server_info` | Get Gerrit server information | — |
-| `get_server_version` | Get Gerrit server version | — |
+| `cherry_pick_change` | Cherry-pick to a destination branch | `change_id`, `destination`, `revision_id?`, `message?` |
+| `cherry_pick_chain` | Cherry-pick a chain of changes | `change_id`, `destination`, `revision_id?` |
 
 ### Result format
 
