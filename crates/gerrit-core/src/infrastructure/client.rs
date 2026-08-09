@@ -218,6 +218,48 @@ impl GerritClient {
         }
         parts
     }
+
+    fn decode_diff_json(raw: &str) -> Result<String, DomainError> {
+        use base64::Engine as _;
+
+        #[derive(Debug, Deserialize)]
+        struct DiffContentEntry {
+            #[serde(default)]
+            ab: Option<Vec<String>>,
+            #[serde(default)]
+            a: Option<Vec<String>>,
+            #[serde(default)]
+            b: Option<Vec<String>>,
+        }
+
+        #[derive(Debug, Deserialize)]
+        struct DiffInfo {
+            #[serde(default)]
+            content: Vec<DiffContentEntry>,
+        }
+
+        let diff: DiffInfo = serde_json::from_str(raw)
+            .map_err(|e| DomainError::Decode(format!("DiffInfo JSON parse error: {e}")))?;
+
+        let engine = base64::engine::general_purpose::STANDARD;
+        let mut lines = Vec::new();
+
+        for entry in &diff.content {
+            let field = entry.ab.as_ref().or(entry.a.as_ref()).or(entry.b.as_ref());
+            if let Some(items) = field {
+                for item in items {
+                    let decoded = engine
+                        .decode(item.as_bytes())
+                        .map_err(|e| DomainError::Decode(format!("base64 decode error: {e}")))?;
+                    let text = String::from_utf8(decoded)
+                        .map_err(|e| DomainError::Decode(format!("utf-8 decode error: {e}")))?;
+                    lines.push(text);
+                }
+            }
+        }
+
+        Ok(lines.concat())
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -252,7 +294,7 @@ impl GerritRepository for GerritClient {
 
     async fn get_commit_message(&self, change_id: &str) -> Result<CommitMessage, DomainError> {
         let cid = Self::percent_encode(change_id);
-        let url = self.url(&format!("/changes/{cid}/message"));
+        let url = self.url(&format!("/changes/{cid}/revisions/current/commit"));
         self.get_json(&url).await
     }
 
@@ -265,52 +307,26 @@ impl GerritRepository for GerritClient {
     async fn get_diff(&self, change_id: &str, file_path: &str) -> Result<String, DomainError> {
         use base64::Engine as _;
 
-        #[derive(Debug, Deserialize)]
-        struct DiffContentEntry {
-            #[serde(default)]
-            ab: Option<Vec<String>>,
-            #[serde(default)]
-            a: Option<Vec<String>>,
-            #[serde(default)]
-            b: Option<Vec<String>>,
-        }
-
-        #[derive(Debug, Deserialize)]
-        struct DiffInfo {
-            #[serde(default)]
-            content: Vec<DiffContentEntry>,
-        }
-
         let cid = Self::percent_encode(change_id);
         let fp = Self::percent_encode(file_path);
         let url = self.url(&format!("/changes/{cid}/revisions/current/patch?path={fp}"));
         let raw = self.get_raw(&url).await?;
 
-        let diff: DiffInfo = serde_json::from_str(&raw).map_err(|e| {
-            let truncated: String = raw.chars().take(500).collect();
-            DomainError::Decode(format!(
-                "DiffInfo JSON parse error: {e}\nRaw body (500 chars): {truncated}"
-            ))
-        })?;
-
-        let mut lines = Vec::new();
-        let engine = base64::engine::general_purpose::STANDARD;
-
-        for entry in &diff.content {
-            let field = entry.ab.as_ref().or(entry.a.as_ref()).or(entry.b.as_ref());
-            if let Some(items) = field {
-                for item in items {
-                    let decoded = engine
-                        .decode(item.as_bytes())
-                        .map_err(|e| DomainError::Decode(format!("base64 decode error: {e}")))?;
-                    let text = String::from_utf8(decoded)
-                        .map_err(|e| DomainError::Decode(format!("utf-8 decode error: {e}")))?;
-                    lines.push(text);
-                }
-            }
+        if let Ok(text) = Self::decode_diff_json(&raw) {
+            return Ok(text);
         }
 
-        Ok(lines.concat())
+        // Some Gerrit versions return the diff as a plain JSON string
+        if let Ok(text) = serde_json::from_str::<String>(&raw) {
+            return Ok(text);
+        }
+
+        let engine = base64::engine::general_purpose::STANDARD;
+        let decoded = engine
+            .decode(raw.trim().as_bytes())
+            .map_err(|e| DomainError::Decode(format!("base64 decode error: {e}")))?;
+        String::from_utf8(decoded)
+            .map_err(|e| DomainError::Decode(format!("utf-8 decode error: {e}")))
     }
 
     async fn list_comments(
