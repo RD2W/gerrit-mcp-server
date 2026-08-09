@@ -26,7 +26,7 @@ code review. Designed for **AOSP 15** scale workflows.
 - **Optimized for AOSP** — result caching (TTL + eviction), rate limiting
   (token bucket), pagination with `has_more` hints
 - **Health & metrics** — `/healthz`, `/readyz`, `/metrics` (Prometheus)
-- **Docker** — multi-stage build (35 MB image), docker-compose
+- **Docker** — multi-stage build (UPX-compressed 23 MB image), docker-compose
 
 ### Quick Start
 
@@ -80,7 +80,7 @@ the image on a connected machine, then transfer the archive:
 # 1. Build on a machine with internet (all dependencies baked in)
 docker build -t gerrit-mcp:latest .
 
-# 2. Export as a single portable archive (~35 MB)
+# 2. Export as a single portable archive (~23 MB, UPX-compressed)
 docker save gerrit-mcp:latest | gzip > gerrit-mcp.tar.gz
 
 # 3. Transfer to the air-gapped host (USB drive, scp, etc.)
@@ -180,7 +180,7 @@ code review. Разработан для рабочих процессов ма�
 - **Оптимизации для AOSP** — кэширование результатов (TTL + вытеснение), ограничение частоты
   (token bucket), пагинация с подсказками `has_more`
 - **Health и метрики** — `/healthz`, `/readyz`, `/metrics` (Prometheus)
-- **Docker** — многоэтапная сборка (образ 35 МБ), docker-compose
+- **Docker** — многоэтапная сборка (образ 23 МБ, сжат UPX), docker-compose
 
 ### Быстрый старт
 
@@ -234,7 +234,7 @@ docker run -d \
 # 1. Сборка на машине с интернетом (все зависимости вкомпилированы в образ)
 docker build -t gerrit-mcp:latest .
 
-# 2. Экспорт в один переносимый архив (~35 МБ)
+# 2. Экспорт в один переносимый архив (~23 МБ, сжатый UPX)
 docker save gerrit-mcp:latest | gzip > gerrit-mcp.tar.gz
 
 # 3. Перенос на изолированный хост (USB-накопитель, scp и т.д.)

@@ -25,7 +25,7 @@ pub async fn run_http<R: GerritRepository + Send + Sync + 'static>(
         move || Ok(svr.clone())
     };
 
-    let mut server_config = StreamableHttpServerConfig::default();
+    let mut server_config = StreamableHttpServerConfig::default().with_legacy_session_mode(false);
     if !config.transport.allowed_hosts.is_empty() {
         server_config = server_config.with_allowed_hosts(&config.transport.allowed_hosts);
     }
