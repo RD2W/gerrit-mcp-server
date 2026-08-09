@@ -59,11 +59,18 @@ pub async fn get_file_diff<R: GerritRepository + Send + Sync + 'static>(
     server: &GerritServer<R>,
     params: GetFileDiffParams,
 ) -> CallToolResult {
-    match server
-        .repo
-        .get_diff(&params.change_id, &params.file_path)
-        .await
-    {
+    let result = if let Some(ref url) = params.gerrit_base_url {
+        match server.resolve_client(Some(url)) {
+            Ok(client) => client.get_diff(&params.change_id, &params.file_path).await,
+            Err(e) => return server.error(e),
+        }
+    } else {
+        server
+            .repo
+            .get_diff(&params.change_id, &params.file_path)
+            .await
+    };
+    match result {
         Ok(text) => server.text(text),
         Err(e) => server.error(format!("Failed to get file diff: {e}")),
     }
