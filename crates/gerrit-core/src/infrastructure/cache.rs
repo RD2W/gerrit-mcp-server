@@ -157,7 +157,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::num::NonZeroUsize;
 
     #[test]
     fn insert_and_retrieve() {

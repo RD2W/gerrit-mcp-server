@@ -164,9 +164,30 @@ pub struct Message {
 #[serde(rename_all = "camelCase")]
 pub struct CommitMessage {
     pub subject: String,
-    pub full_message: String,
+    pub message: String,
+    pub commit: String,
+    pub author: GitPersonInfo,
+    pub committer: GitPersonInfo,
     #[serde(default)]
-    pub footers: BTreeMap<String, String>,
+    pub parents: Vec<CommitParent>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitPersonInfo {
+    pub name: String,
+    pub email: String,
+    pub date: String,
+    #[serde(default)]
+    pub tz: i32,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommitParent {
+    pub commit: String,
+    #[serde(default)]
+    pub subject: Option<String>,
 }
 
 // ---------------------------------------------------------------------------

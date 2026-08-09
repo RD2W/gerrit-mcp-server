@@ -202,14 +202,18 @@ impl GerritClient {
 
     // -- Query helpers ------------------------------------------------------
 
-    /// Build `o=OPT1&o=OPT2` query string suffix for Gerrit option lists.
+    /// Build `?o=OPT1&o=OPT2` query string suffix for Gerrit option lists.
     fn build_options_query(options: &[String]) -> String {
         if options.is_empty() {
             return String::new();
         }
-        let mut parts = String::new();
+        let mut parts = String::from("?o=");
+        let mut first = true;
         for opt in options {
-            parts.push_str("&o=");
+            if !first {
+                parts.push_str("&o=");
+            }
+            first = false;
             parts.push_str(&Self::percent_encode(opt));
         }
         parts
