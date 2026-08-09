@@ -109,6 +109,10 @@ pub struct Change {
     pub updated: String,
     #[serde(default)]
     pub work_in_progress: bool,
+    #[serde(default)]
+    pub topic: Option<String>,
+    #[serde(default)]
+    pub reviewers: Option<BTreeMap<String, Vec<ReviewerInfo>>>,
 }
 
 // ---------------------------------------------------------------------------
@@ -139,6 +143,8 @@ pub struct ChangeDetail {
     pub reviewers: Option<BTreeMap<String, Vec<ReviewerInfo>>>,
     #[serde(default)]
     pub messages: Vec<Message>,
+    #[serde(default)]
+    pub topic: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -184,7 +190,7 @@ pub struct VoteInfo {
 // ReviewerInfo
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReviewerInfo {
     #[serde(rename = "_account_id")]
@@ -739,6 +745,27 @@ pub struct MockGerritRepository {
 }
 
 impl MockGerritRepository {
+    #[must_use]
+    pub fn make_change(number: u64, subject: &str) -> Change {
+        Change {
+            id: format!("project~branch~{}", number),
+            _number: number,
+            subject: subject.to_string(),
+            status: "NEW".to_string(),
+            project: "project".to_string(),
+            branch: "main".to_string(),
+            owner: AccountInfo {
+                _account_id: 1000,
+                name: Some("Author".into()),
+                email: Some("author@example.com".into()),
+            },
+            updated: "2025-01-01 00:00:00".into(),
+            work_in_progress: false,
+            topic: None,
+            reviewers: None,
+        }
+    }
+
     pub fn push_query_changes_result(&self, result: Result<Vec<Change>, DomainError>) {
         self.query_changes_results.lock().unwrap().push(result);
     }
@@ -1096,31 +1123,138 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // MockGerritRepository tests
+    // Deserialization tests
     // -----------------------------------------------------------------------
 
-    fn make_change(number: u64, subject: &str) -> Change {
-        Change {
-            id: format!("project~branch~{}", number),
-            _number: number,
-            subject: subject.to_string(),
-            status: "NEW".to_string(),
-            project: "project".to_string(),
-            branch: "main".to_string(),
-            owner: AccountInfo {
-                _account_id: 1000,
-                name: Some("Author".into()),
-                email: Some("author@example.com".into()),
-            },
-            updated: "2025-01-01 00:00:00".into(),
-            work_in_progress: false,
-        }
+    #[test]
+    fn test_change_deserialize_with_topic() {
+        let json = r#"{
+            "id": "project~branch~12345",
+            "_number": 12345,
+            "subject": "Test change with topic",
+            "status": "NEW",
+            "project": "my-project",
+            "branch": "main",
+            "owner": {"_account_id": 1000, "name": "Author", "email": "author@example.com"},
+            "updated": "2025-01-01 00:00:00",
+            "topic": "my-topic-name"
+        }"#;
+
+        let change: Change = serde_json::from_str(json).unwrap();
+        assert_eq!(change._number, 12345);
+        assert_eq!(change.topic, Some("my-topic-name".to_string()));
     }
+
+    #[test]
+    fn test_change_deserialize_without_topic() {
+        let json = r#"{
+            "id": "project~branch~12345",
+            "_number": 12345,
+            "subject": "Test change without topic",
+            "status": "NEW",
+            "project": "my-project",
+            "branch": "main",
+            "owner": {"_account_id": 1000, "name": "Author", "email": "author@example.com"},
+            "updated": "2025-01-01 00:00:00"
+        }"#;
+
+        let change: Change = serde_json::from_str(json).unwrap();
+        assert_eq!(change._number, 12345);
+        assert_eq!(change.topic, None);
+    }
+
+    #[test]
+    fn test_change_detail_deserialize_with_topic() {
+        let json = r#"{
+            "id": "project~branch~12345",
+            "_number": 12345,
+            "subject": "Test detail with topic",
+            "status": "NEW",
+            "project": "my-project",
+            "branch": "main",
+            "owner": {"_account_id": 1000, "name": "Author", "email": "author@example.com"},
+            "updated": "2025-01-01 00:00:00",
+            "topic": "feature-topic"
+        }"#;
+
+        let detail: ChangeDetail = serde_json::from_str(json).unwrap();
+        assert_eq!(detail._number, 12345);
+        assert_eq!(detail.topic, Some("feature-topic".to_string()));
+    }
+
+    #[test]
+    fn test_change_detail_deserialize_without_topic() {
+        let json = r#"{
+            "id": "project~branch~12345",
+            "_number": 12345,
+            "subject": "Test detail without topic",
+            "status": "NEW",
+            "project": "my-project",
+            "branch": "main",
+            "owner": {"_account_id": 1000, "name": "Author", "email": "author@example.com"},
+            "updated": "2025-01-01 00:00:00"
+        }"#;
+
+        let detail: ChangeDetail = serde_json::from_str(json).unwrap();
+        assert_eq!(detail._number, 12345);
+        assert_eq!(detail.topic, None);
+    }
+
+    #[test]
+    fn test_change_deserialize_with_reviewers() {
+        let json = r#"{
+            "id": "project~branch~12345",
+            "_number": 12345,
+            "subject": "Test with reviewers",
+            "status": "NEW",
+            "project": "my-project",
+            "branch": "main",
+            "owner": {"_account_id": 1000, "name": "Author", "email": "author@example.com"},
+            "updated": "2025-01-01 00:00:00",
+            "reviewers": {
+                "REVIEWER": [{"_account_id": 2000, "email": "rev@example.com"}],
+                "CC": [{"_account_id": 3000, "email": "cc@example.com"}]
+            }
+        }"#;
+
+        let change: Change = serde_json::from_str(json).unwrap();
+        let reviewers = change.reviewers.as_ref().unwrap();
+        let reviewer_list = reviewers.get("REVIEWER").unwrap();
+        assert_eq!(reviewer_list.len(), 1);
+        assert_eq!(reviewer_list[0]._account_id, 2000);
+        assert_eq!(reviewer_list[0].email.as_deref(), Some("rev@example.com"));
+
+        let cc_list = reviewers.get("CC").unwrap();
+        assert_eq!(cc_list.len(), 1);
+        assert_eq!(cc_list[0]._account_id, 3000);
+        assert_eq!(cc_list[0].email.as_deref(), Some("cc@example.com"));
+    }
+
+    #[test]
+    fn test_change_deserialize_without_reviewers() {
+        let json = r#"{
+            "id": "project~branch~12345",
+            "_number": 12345,
+            "subject": "No reviewers",
+            "status": "NEW",
+            "project": "my-project",
+            "branch": "main",
+            "owner": {"_account_id": 1000, "name": "Author", "email": "author@example.com"},
+            "updated": "2025-01-01 00:00:00"
+        }"#;
+
+        let change: Change = serde_json::from_str(json).unwrap();
+        assert_eq!(change.reviewers, None);
+    }
+
+    // -----------------------------------------------------------------------
+    // MockGerritRepository tests
+    // -----------------------------------------------------------------------
 
     #[tokio::test]
     async fn mock_query_changes_returns_pushed_result() {
         let mock = MockGerritRepository::default();
-        let expected = make_change(12345, "Test change");
+        let expected = MockGerritRepository::make_change(12345, "Test change");
         mock.push_query_changes_result(Ok(vec![expected.clone()]));
 
         let result = mock
@@ -1180,6 +1314,7 @@ mod tests {
             labels: BTreeMap::new(),
             reviewers: None,
             messages: vec![],
+            topic: None,
         }));
 
         let detail = mock.get_change_detail("test~123", &[]).await.unwrap();

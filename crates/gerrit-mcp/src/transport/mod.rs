@@ -23,10 +23,9 @@ use self::stdio::run_stdio;
 /// Returns an error if transport binding fails.
 pub async fn run_transport<R: GerritRepository + Send + Sync + 'static>(
     config: &Config,
-    repo: R,
+    server: GerritServer<R>,
 ) -> anyhow::Result<()> {
-    let server = GerritServer::new(repo);
-
+    // server is already constructed with client_factory if needed
     tracing::info!(mode = %config.transport.mode, "starting transport");
 
     match config.transport.mode.as_str() {

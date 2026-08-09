@@ -130,6 +130,13 @@ impl GerritClient {
         body.strip_prefix(XSSI_PREFIX).unwrap_or(body)
     }
 
+    fn json_decode_error(e: impl std::fmt::Display, body: &str) -> DomainError {
+        let truncated: String = body.chars().take(500).collect();
+        DomainError::Decode(format!(
+            "JSON parse error: {e}\nRaw body (500 chars): {truncated}"
+        ))
+    }
+
     /// Send a request and check for non-2xx status, consuming the body on error.
     async fn check_response(response: reqwest::Response) -> Result<reqwest::Response, DomainError> {
         if !response.status().is_success() {
@@ -146,12 +153,7 @@ impl GerritClient {
         let body = response.text().await?;
         let trimmed = Self::strip_xssi(&body);
 
-        serde_json::from_str(trimmed).map_err(|e| {
-            let truncated: String = body.chars().take(500).collect();
-            DomainError::Decode(format!(
-                "JSON parse error: {e}\nRaw body (500 chars): {truncated}"
-            ))
-        })
+        serde_json::from_str(trimmed).map_err(|e| Self::json_decode_error(e, &body))
     }
 
     async fn get_raw(&self, url: &str) -> Result<String, DomainError> {
@@ -171,12 +173,7 @@ impl GerritClient {
         let text = response.text().await?;
         let trimmed = Self::strip_xssi(&text);
 
-        serde_json::from_str(trimmed).map_err(|e| {
-            let truncated: String = text.chars().take(500).collect();
-            DomainError::Decode(format!(
-                "JSON parse error: {e}\nRaw body (500 chars): {truncated}"
-            ))
-        })
+        serde_json::from_str(trimmed).map_err(|e| Self::json_decode_error(e, &text))
     }
 
     async fn post_empty(&self, url: &str, body: &impl Serialize) -> Result<(), DomainError> {
@@ -264,17 +261,52 @@ impl GerritRepository for GerritClient {
     async fn get_diff(&self, change_id: &str, file_path: &str) -> Result<String, DomainError> {
         use base64::Engine as _;
 
+        #[derive(Debug, Deserialize)]
+        struct DiffContentEntry {
+            #[serde(default)]
+            ab: Option<Vec<String>>,
+            #[serde(default)]
+            a: Option<Vec<String>>,
+            #[serde(default)]
+            b: Option<Vec<String>>,
+        }
+
+        #[derive(Debug, Deserialize)]
+        struct DiffInfo {
+            #[serde(default)]
+            content: Vec<DiffContentEntry>,
+        }
+
         let cid = Self::percent_encode(change_id);
         let fp = Self::percent_encode(file_path);
         let url = self.url(&format!("/changes/{cid}/revisions/current/patch?path={fp}"));
         let raw = self.get_raw(&url).await?;
 
-        let decoded = base64::engine::general_purpose::STANDARD
-            .decode(raw.as_bytes())
-            .map_err(|e| DomainError::Decode(format!("base64 decode error: {e}")))?;
+        let diff: DiffInfo = serde_json::from_str(&raw).map_err(|e| {
+            let truncated: String = raw.chars().take(500).collect();
+            DomainError::Decode(format!(
+                "DiffInfo JSON parse error: {e}\nRaw body (500 chars): {truncated}"
+            ))
+        })?;
 
-        String::from_utf8(decoded)
-            .map_err(|e| DomainError::Decode(format!("utf-8 decode error: {e}")))
+        let mut lines = Vec::new();
+        let engine = base64::engine::general_purpose::STANDARD;
+
+        for entry in &diff.content {
+            let field = entry.ab.as_ref().or(entry.a.as_ref()).or(entry.b.as_ref());
+            if let Some(items) = field {
+                for item in items {
+                    let decoded = engine
+                        .decode(item.as_bytes())
+                        .map_err(|e| DomainError::Decode(format!("base64 decode error: {e}")))?;
+                    let text = String::from_utf8(decoded)
+                        .map_err(|e| DomainError::Decode(format!("utf-8 decode error: {e}")))?;
+                    lines.push(text);
+                }
+            }
+        }
+
+        Ok(lines.concat())
     }
 
     async fn list_comments(
@@ -690,5 +722,57 @@ mod tests {
         };
         let url = client.url("/changes/123");
         assert_eq!(url, "https://gerrit.example.com/a/changes/123");
+    }
+
+    // -- get_diff JSON DiffInfo parsing ---------------------------------
+
+    #[tokio::test]
+    async fn test_get_diff_parses_diff_info_json() {
+        let server = MockServer::start().await;
+
+        let line1 = "diff --git a/src/main.rs b/src/main.rs\n";
+        let line2 = "+fn main() {}\n";
+        use base64::Engine as _;
+        let b64_line1 = base64::engine::general_purpose::STANDARD.encode(line1);
+        let b64_line2 = base64::engine::general_purpose::STANDARD.encode(line2);
+
+        let diff_info_json = format!(
+            r#"{{"content":[{{"ab":["{}","{}"]}}]}}"#,
+            b64_line1, b64_line2
+        );
+
+        Mock::given(method("GET"))
+            .and(path("/changes/12345/revisions/current/patch"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(diff_info_json))
+            .mount(&server)
+            .await;
+
+        let client = test_client(&server.uri());
+
+        let result = client.get_diff("12345", "src/main.rs").await.unwrap();
+        assert_eq!(result, format!("{}{}", line1, line2));
+    }
+
+    #[tokio::test]
+    async fn test_get_diff_strips_xssi_prefix() {
+        let server = MockServer::start().await;
+
+        let line1 = "--- a/src/lib.rs\n+++ b/src/lib.rs\n";
+        use base64::Engine as _;
+        let b64_line1 = base64::engine::general_purpose::STANDARD.encode(line1);
+
+        let diff_info_json = format!(r#"{{"content":[{{"ab":["{}"]}}]}}"#, b64_line1);
+        let body = format!("{XSSI_JSON}{diff_info_json}");
+
+        Mock::given(method("GET"))
+            .and(path("/changes/xssi/revisions/current/patch"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(body))
+            .mount(&server)
+            .await;
+
+        let client = test_client(&server.uri());
+
+        let result = client.get_diff("xssi", "src/lib.rs").await.unwrap();
+        assert_eq!(result, line1);
     }
 }

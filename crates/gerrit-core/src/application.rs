@@ -52,6 +52,26 @@ impl<R: GerritRepository> GerritService<R> {
         }
         Ok(())
     }
+
+    async fn cached_call<T: serde::de::DeserializeOwned + serde::Serialize>(
+        &self,
+        key: &str,
+        fetch: impl Future<Output = Result<T, DomainError>>,
+    ) -> Result<T, DomainError> {
+        if let Some(ref cache) = self.cache
+            && let Some(cached) = cache.get(&key.to_string())
+        {
+            return serde_json::from_str(&cached).map_err(|e| DomainError::Decode(e.to_string()));
+        }
+        self.acquire_rate_limit().await?;
+        let result = fetch.await?;
+        if let Some(ref cache) = self.cache
+            && let Ok(json) = serde_json::to_string(&result)
+        {
+            cache.insert(key.to_string(), json);
+        }
+        Ok(result)
+    }
 }
 
 /// Cache key builder for common Gerrit API calls.
@@ -68,19 +88,8 @@ impl<R: GerritRepository> GerritRepository for GerritService<R> {
         options: &[String],
     ) -> Result<Vec<Change>, DomainError> {
         let key = cache_key("qc", &format!("{query}:{limit:?}:{options:?}"));
-        if let Some(ref cache) = self.cache
-            && let Some(cached) = cache.get(&key)
-        {
-            return serde_json::from_str(&cached).map_err(|e| DomainError::Decode(e.to_string()));
-        }
-        self.acquire_rate_limit().await?;
-        let result = self.repo.query_changes(query, limit, options).await?;
-        if let Some(ref cache) = self.cache
-            && let Ok(json) = serde_json::to_string(&result)
-        {
-            cache.insert(key, json);
-        }
-        Ok(result)
+        self.cached_call(&key, self.repo.query_changes(query, limit, options))
+            .await
     }
 
     async fn get_change_detail(
@@ -89,19 +98,8 @@ impl<R: GerritRepository> GerritRepository for GerritService<R> {
         options: &[String],
     ) -> Result<ChangeDetail, DomainError> {
         let key = cache_key("gcd", &format!("{change_id}:{options:?}"));
-        if let Some(ref cache) = self.cache
-            && let Some(cached) = cache.get(&key)
-        {
-            return serde_json::from_str(&cached).map_err(|e| DomainError::Decode(e.to_string()));
-        }
-        self.acquire_rate_limit().await?;
-        let result = self.repo.get_change_detail(change_id, options).await?;
-        if let Some(ref cache) = self.cache
-            && let Ok(json) = serde_json::to_string(&result)
-        {
-            cache.insert(key, json);
-        }
-        Ok(result)
+        self.cached_call(&key, self.repo.get_change_detail(change_id, options))
+            .await
     }
 
     async fn get_commit_message(&self, change_id: &str) -> Result<CommitMessage, DomainError> {
@@ -309,6 +307,8 @@ mod tests {
             },
             updated: "2025-01-01".into(),
             work_in_progress: false,
+            topic: None,
+            reviewers: None,
         }
     }
 
@@ -332,6 +332,7 @@ mod tests {
             labels: BTreeMap::new(),
             reviewers: None,
             messages: vec![],
+            topic: None,
         }
     }
 
