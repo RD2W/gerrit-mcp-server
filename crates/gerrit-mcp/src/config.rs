@@ -309,18 +309,24 @@ pub struct TransportConfig {
     /// Allowed hostnames for Streamable HTTP Host header validation.
     #[serde(default)]
     pub allowed_hosts: Vec<String>,
+    /// Bearer token for MCP endpoint authentication. When set, clients
+    /// must include `Authorization: Bearer <token>` in requests.
+    /// Token auth is disabled when this is empty.
+    #[serde(default)]
+    pub mcp_auth_token: String,
 }
 
 impl Default for TransportConfig {
     fn default() -> Self {
         Self {
             mode: "both".into(),
-            bind_addr: "0.0.0.0:8080".into(),
+            bind_addr: "127.0.0.1:8080".into(),
             http_path: "/mcp".into(),
             health_path: "/healthz".into(),
             ready_path: "/readyz".into(),
             metrics_path: "/metrics".into(),
             allowed_hosts: vec![],
+            mcp_auth_token: String::new(),
         }
     }
 }
@@ -442,7 +448,7 @@ unknown_field = 42
     fn transport_defaults() {
         let config = TransportConfig::default();
         assert_eq!(config.mode, "both");
-        assert_eq!(config.bind_addr, "0.0.0.0:8080");
+        assert_eq!(config.bind_addr, "127.0.0.1:8080");
         assert_eq!(config.http_path, "/mcp");
         assert!(config.allowed_hosts.is_empty());
     }

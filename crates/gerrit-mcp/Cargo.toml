@@ -31,10 +31,12 @@ serde_json.workspace = true
 clap = { version = "4", features = ["derive"] }
 chrono.workspace = true
 regex-lite.workspace = true
+subtle.workspace = true
 
 [dev-dependencies]
 wiremock = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+tower = { version = "0.5", default-features = false, features = ["util"] }
 
 [build-dependencies]
 chrono.workspace = true
