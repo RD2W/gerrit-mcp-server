@@ -30,7 +30,7 @@ the annotated template. Environment variables override specific fields (listed b
 | Field | Env var | Default | Description |
 |---|---|---|---|
 | `base_url` | `GERRIT_URL` | `""` | **Required.** Gerrit base URL (e.g. `https://gerrit.example.com`) |
-| `timeout_secs` | — | `30` | HTTP request timeout |
+| `timeout_secs` | — | `30` | HTTP request timeout in seconds |
 | `ca_cert` | `GERRIT_CA_CERT` / `SSL_CERT_FILE` | — | Custom CA PEM path |
 | `ca_cert_dir` | `SSL_CERT_DIR` | — | Directory of CA certs |
 | `verify_ssl` | `GERRIT_VERIFY_SSL=false` | `true` | Enable/disable TLS verification |
@@ -39,11 +39,11 @@ the annotated template. Environment variables override specific fields (listed b
 
 | Field | Description |
 |---|---|
-| `mode` | `"token"`, `"basic"`, or `"none"` |
+| `mode` | Auth mode: `"http_basic"` / `"basic"`, `"bearer"` / `"token"`, `"git_cookies"`, or `"none"` |
+| `username_env` | Env var name for Basic auth username (e.g. `GERRIT_USERNAME`) |
+| `auth_token_env` | Env var name for HTTP auth token/password (default: `GERRIT_AUTH_TOKEN`) |
 | `token_env` | Env var name for the Bearer token (default: `GERRIT_TOKEN`) |
-| `username_env` | Env var name for Basic auth username (default: `GERRIT_USERNAME`) |
-| `auth_token_env` | Env var name for HTTP auth token (default: `GERRIT_AUTH_TOKEN`) |
-| `gitcookies_path` | Path to a `.gitcookies` file for Gerrit auth |
+| `gitcookies_path` | Path to a `.gitcookies` file for Gerrit auth (Netscape format) |
 
 Credentials are never stored in the config file — only the env var names.
 
@@ -57,9 +57,9 @@ Credentials are never stored in the config file — only the env var names.
 
 | Field | Default | Description |
 |---|---|---|
-| `enabled` | `false` | Enable/disable cache |
-| `ttl_secs` | `300` | Entry lifetime |
-| `max_entries` | `1000` | Max cached responses |
+| `enabled` | `false` | Enable/disable TTL + LRU cache |
+| `ttl_secs` | `300` | Entry lifetime in seconds |
+| `max_entries` | `1000` | Max cached responses (LRU eviction) |
 
 ### `[rate_limit]` — token bucket
 
@@ -74,12 +74,13 @@ Credentials are never stored in the config file — only the env var names.
 | Field | Default | Description |
 |---|---|---|
 | `mode` | `"both"` | `"stdio"`, `"http"`, or `"both"` |
-| `bind_addr` | `"0.0.0.0:8080"` | HTTP bind address |
-| `http_path` | `"/mcp"` | MCP endpoint path |
+| `bind_addr` | `"127.0.0.1:8080"` | HTTP bind address (use `0.0.0.0:8080` for network access) |
+| `http_path` | `"/mcp"` | MCP Streamable HTTP endpoint path |
 | `health_path` | `"/healthz"` | Liveness endpoint |
 | `ready_path` | `"/readyz"` | Readiness endpoint |
 | `metrics_path` | `"/metrics"` | Prometheus metrics endpoint |
 | `allowed_hosts` | — | Allowed Host header values (DNS rebinding protection) |
+| `mcp_auth_token` | `""` | Optional Bearer token for MCP endpoint auth (empty = disabled) |
 
 ### `[log]`
 
@@ -135,6 +136,28 @@ production load.
 
 ---
 
+## MCP endpoint token authentication
+
+When `mcp_auth_token` is set to a non-empty value, the HTTP transport requires
+a valid Bearer token on every request to the MCP endpoint. Token comparison
+uses constant-time equality to prevent timing attacks.
+
+```toml
+[transport]
+mode = "http"
+mcp_auth_token = "my-secret-token"
+```
+
+Clients must include the header:
+```
+Authorization: Bearer my-secret-token
+```
+
+Requests without a valid token receive **401 Unauthorized**. Health and metrics
+endpoints are not affected — only the MCP endpoint is protected.
+
+---
+
 ## DNS rebinding protection
 
 In HTTP mode, rmcp validates the `Host` header against `allowed_hosts`. Configure
@@ -155,8 +178,8 @@ allowed_hosts = ["localhost", "mcp.example.com"]
 | Endpoint | Behaviour |
 |---|---|
 | `GET /healthz` | Always `200 OK` if the process is alive |
-| `GET /readyz` | `200` when config is loaded and Gerrit responds to a lightweight probe; `503` otherwise |
-| `GET /metrics` | Prometheus text format — request counters, latencies, cache hits/misses |
+| `GET /readyz` | `200` when config is loaded and process is ready; serves as a basic readiness signal |
+| `GET /metrics` | Prometheus text format — tool call counters, errors, queries, uptime |
 
 ### Docker health check
 

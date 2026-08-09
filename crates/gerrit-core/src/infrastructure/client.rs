@@ -687,8 +687,18 @@ mod tests {
             "CURRENT_REVISION".into(),
             "DETAILED_ACCOUNTS".into(),
         ]);
-        assert!(result.contains("&o=CURRENT_REVISION"));
-        assert!(result.contains("&o=DETAILED_ACCOUNTS"));
+        assert!(
+            result.starts_with("?o="),
+            "should start with ?o=, got: {result}"
+        );
+        assert!(
+            result.contains("?o=CURRENT_REVISION"),
+            "should contain first option"
+        );
+        assert!(
+            result.contains("&o=DETAILED_ACCOUNTS"),
+            "should contain second option"
+        );
     }
 
     // -- strip_xssi --------------------------------------------------------

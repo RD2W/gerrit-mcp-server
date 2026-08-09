@@ -15,18 +15,20 @@ code review. Designed for **AOSP 15** scale workflows.
 
 ### Features
 
-- **28 MCP tools** — full Gerrit REST API coverage: search, changes, reviews,
-  accounts, groups, projects, branches, tags, plugins, and config
+- **28 MCP tools** — full Gerrit REST API coverage: query changes, manage
+  lifecycle, code review, cherry-pick, drafts and comments
 - **Dual transport** — stdio (`docker exec`) and Streamable HTTP (axum + rmcp)
-- **Flexible auth** — Bearer token or HTTP Basic Auth to Gerrit
+- **Flexible auth** — HTTP Basic, Bearer token, Git cookies, or anonymous access
 - **Custom CA** — TLS with corporate/self-signed certificates via
   `GERRIT_CA_CERT` / `SSL_CERT_FILE`
 - **DNS rebinding protection** — `allowed_hosts` validation for Streamable HTTP
   (rmcp security check, configurable per deployment)
-- **Optimized for AOSP** — result caching (TTL + eviction), rate limiting
+- **MCP token auth** — optional Bearer token authentication on the MCP HTTP
+  endpoint (`mcp_auth_token`), protected by constant-time comparison
+- **Optimized for AOSP** — result caching (TTL + LRU eviction), rate limiting
   (token bucket), pagination with `has_more` hints
 - **Health & metrics** — `/healthz`, `/readyz`, `/metrics` (Prometheus)
-- **Docker** — multi-stage build (UPX-compressed 23 MB image), docker-compose
+- **Docker** — multi-stage build (UPX-compressed ~23 MB image), docker-compose
 
 ### Quick Start
 
@@ -36,14 +38,14 @@ code review. Designed for **AOSP 15** scale workflows.
 cp config/config.example.toml config/config.toml
 # Edit config.toml — set base_url and auth mode
 export GERRIT_USERNAME="user"
-export GERRIT_PASSWORD="pass"
+export GERRIT_AUTH_TOKEN="your-http-password"
 cargo run --release
 ```
 
 #### Docker (local dev)
 
 ```bash
-# Set credentials in config/.env (see config.example.toml)
+# Set credentials in config/.env (see config/.env.example)
 docker compose up -d
 ```
 
@@ -108,12 +110,12 @@ See `config/config.example.toml` for all options. Key sections:
 
 | Section | Purpose |
 |---|---|
-| `[gerrit]` | Base URL, auth mode, TLS, CA cert path, timeout |
-| `[gerrit.auth]` | `token` / `basic` / `none`, env var names for credentials |
+| `[gerrit]` | Base URL, TLS (CA cert path, verify_ssl), timeout |
+| `[gerrit.auth]` | Auth mode (`http_basic`/`bearer`/`git_cookies`/`none`), env var names |
 | `[service]` | Default max results |
-| `[cache]` | In-memory TTL cache for repeated queries |
+| `[cache]` | In-memory TTL + LRU cache for repeated queries |
 | `[rate_limit]` | Token-bucket rate limiter (protects Gerrit) |
-| `[transport]` | Transport mode, bind address, `allowed_hosts` for DNS rebinding |
+| `[transport]` | Transport mode, bind address, `allowed_hosts`, `mcp_auth_token` |
 | `[log]` | Log level (`RUST_LOG` overrides) |
 
 #### Streamable HTTP & DNS rebinding protection
@@ -143,7 +145,7 @@ Full documentation is available in `docs/en/`:
 ### Development
 
 ```bash
-cargo test                    # 199 tests
+cargo test                    # all tests
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 ```
@@ -169,18 +171,20 @@ code review. Разработан для рабочих процессов ма�
 
 ### Возможности
 
-- **28 инструментов MCP** — полное покрытие Gerrit REST API: поиск, изменения, ревью,
-  аккаунты, группы, проекты, ветки, теги, плагины и конфигурация
+- **28 инструментов MCP** — полное покрытие Gerrit REST API: поиск изменений,
+  управление жизненным циклом, ревью, cherry-pick, черновики и комментарии
 - **Двойной транспорт** — stdio (`docker exec`) и Streamable HTTP (axum + rmcp)
-- **Гибкая аутентификация** — Bearer-токен или HTTP Basic Auth для Gerrit
+- **Гибкая аутентификация** — HTTP Basic, Bearer-токен, Git cookies или анонимный доступ
 - **Пользовательские сертификаты** — TLS с корпоративными/самоподписанными сертификатами
   через `GERRIT_CA_CERT` / `SSL_CERT_FILE`
 - **Защита от DNS rebinding** — проверка `allowed_hosts` для Streamable HTTP
   (механизм безопасности rmcp, настраивается под развёртывание)
-- **Оптимизации для AOSP** — кэширование результатов (TTL + вытеснение), ограничение частоты
-  (token bucket), пагинация с подсказками `has_more`
+- **Токен-аутентификация MCP** — опциональная Bearer-аутентификация на HTTP-эндпоинте
+  MCP (`mcp_auth_token`), защищённая сравнением за константное время
+- **Оптимизации для AOSP** — кэширование результатов (TTL + LRU-вытеснение),
+  ограничение частоты (token bucket), пагинация с подсказками `has_more`
 - **Health и метрики** — `/healthz`, `/readyz`, `/metrics` (Prometheus)
-- **Docker** — многоэтапная сборка (образ 23 МБ, сжат UPX), docker-compose
+- **Docker** — многоэтапная сборка (образ ~23 МБ, сжат UPX), docker-compose
 
 ### Быстрый старт
 
@@ -190,14 +194,14 @@ code review. Разработан для рабочих процессов ма�
 cp config/config.example.toml config/config.toml
 # Отредактируйте config.toml — укажите base_url и режим аутентификации
 export GERRIT_USERNAME="пользователь"
-export GERRIT_PASSWORD="пароль"
+export GERRIT_AUTH_TOKEN="ваш-http-пароль"
 cargo run --release
 ```
 
 #### Docker (локальная разработка)
 
 ```bash
-# Задайте учётные данные в config/.env (см. config.example.toml)
+# Задайте учётные данные в config/.env (см. config/.env.example)
 docker compose up -d
 ```
 
@@ -262,12 +266,12 @@ docker compose up -d
 
 | Секция | Назначение |
 |---|---|
-| `[gerrit]` | Базовый URL, режим аутентификации, TLS, путь к CA-сертификату, таймаут |
-| `[gerrit.auth]` | `token` / `basic` / `none`, имена переменных окружения для учётных данных |
+| `[gerrit]` | Базовый URL, TLS (путь к CA-сертификату, verify_ssl), таймаут |
+| `[gerrit.auth]` | Режим аутентификации (`http_basic`/`bearer`/`git_cookies`/`none`), имена переменных окружения |
 | `[service]` | Максимум результатов по умолчанию |
-| `[cache]` | TTL-кэш в памяти для повторных запросов |
+| `[cache]` | TTL + LRU кэш в памяти для повторных запросов |
 | `[rate_limit]` | Ограничитель частоты token bucket (защищает Gerrit) |
-| `[transport]` | Режим транспорта, адрес, `allowed_hosts` для защиты от DNS rebinding |
+| `[transport]` | Режим транспорта, адрес, `allowed_hosts`, `mcp_auth_token` |
 | `[log]` | Уровень логирования (переопределяется `RUST_LOG`) |
 
 #### Streamable HTTP и защита от DNS rebinding
@@ -297,7 +301,7 @@ allowed_hosts = ["localhost", "127.0.0.1", "gerrit-mcp", "gerrit-mcp:8004"]
 ### Разработка
 
 ```bash
-cargo test                    # 102 теста
+cargo test                    # все тесты
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 ```

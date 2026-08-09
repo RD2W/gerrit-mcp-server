@@ -12,25 +12,33 @@ gerrit-mcp-server/
 ├── crates/
 │   ├── gerrit-core/            # Библиотека — без зависимостей MCP
 │   │   └── src/
-│   │       ├── domain.rs       # Модели данных: Change, Account, Group, Project, …
-│   │       ├── application.rs  # Сервисный слой: запросы, изменения, логика ревью
+│   │       ├── domain.rs       # Модели данных + типаж GerritRepository
+│   │       ├── domain/
+│   │       │   ├── error.rs    # Типы ошибок (DomainError, CacheError, RateLimitError)
+│   │       │   └── mock.rs     # MockGerritRepository для тестирования
+│   │       ├── application.rs  # GerritService — декоратор с кэшем и rate-limit
 │   │       └── infrastructure/
-│   │           ├── client.rs   # HTTP-клиент для Gerrit REST API
+│   │           ├── auth.rs     # Перечисление AuthMode, парсер gitcookies, AuthManager
+│   │           ├── client.rs   # GerritClient — HTTP-клиент на reqwest для Gerrit REST API
 │   │           ├── tls.rs      # Построитель TLS-конфигурации (rustls + системные сертификаты)
-│   │           ├── cache.rs    # TTL-кэш в памяти (DashMap)
-│   │           └── rate_limit.rs # Ограничитель частоты token bucket (governor)
+│   │           ├── cache.rs    # TTL + LRU кэш в памяти (lru::LruCache + Mutex)
+│   │           └── rate_limit.rs # Ограничитель частоты token bucket (governor GCRA)
 │   └── gerrit-mcp/             # Бинарный крейт — слой MCP-сервера
 │       └── src/
-│           ├── main.rs         # Точка входа, аргументы CLI, инициализация логирования
+│           ├── main.rs         # Точка входа, аргументы CLI, определение режима аутентификации
 │           ├── config.rs       # Загрузка TOML-конфигурации + переопределение через env
+│           ├── health.rs       # Обработчики /healthz, /readyz, /metrics
 │           ├── mcp/
-│           │   ├── mod.rs      # Инициализация MCP-сервера, диспетчеризация инструментов
-│           │   └── tools.rs    # Определения инструментов (JSON Schema через schemars)
+│           │   ├── mod.rs      # GerritServer, маршрутизатор инструментов, хелперы
+│           │   ├── tools.rs    # Типы параметров инструментов (JSON Schema через schemars)
+│           │   ├── changes.rs  # Обработчики жизненного цикла изменений
+│           │   ├── reviews.rs  # Обработчики ревью и cherry-pick
+│           │   └── comments.rs # Обработчики комментариев и черновиков
 │           ├── transport/
-│           │   ├── mod.rs      # Абстракция транспорта
+│           │   ├── mod.rs      # Диспетчер транспорта (stdio / http / both)
 │           │   ├── stdio.rs    # Транспорт stdin/stdout
 │           │   └── http.rs     # Axum + rmcp Streamable HTTP транспорт
-│           └── health.rs       # Эндпоинты /healthz, /readyz, /metrics
+│           └── tests/          # CLI и интеграционные тесты
 ├── config/
 │   ├── config.example.toml     # Аннотированный шаблон конфигурации
 │   ├── config.toml             # Локальная конфигурация (в gitignore)
@@ -56,8 +64,8 @@ gerrit-mcp-server/
 │  └── health.rs       health/metrics │
 ├─────────────────────────────────────┤
 │  gerrit-core (библиотека)           │
-│  ├── application.rs  сервисный слой │
-│  ├── domain.rs       модели данных  │
+│  ├── application.rs  кэш/rate-limit │
+│  ├── domain.rs       типаж + модели │
 │  └── infrastructure/                │
 │      ├── client.rs   HTTP-клиент    │
 │      ├── tls.rs      настройка TLS  │
@@ -82,23 +90,29 @@ MCP** — это чистая HTTP-клиентская библиотека, к
 
 | Модуль | Назначение |
 |---|---|
-| `domain.rs` | Все типы данных: `Change`, `Account`, `Group`, `Project`, `Review`, типы ошибок (`CoreError`) |
-| `application.rs` | Высокоуровневые операции: `query_changes()`, `get_change_details()`, `submit_change()`, с пагинацией и кэшированием |
-| `infrastructure/client.rs` | HTTP-клиент на `reqwest`: формирование запросов, добавление заголовков аутентификации, разбор ответов |
-| `infrastructure/tls.rs` | TLS-конфигурация: загрузка пользовательских CA, настройка rustls, разбор PEM |
-| `infrastructure/cache.rs` | Кэш в памяти с TTL-вытеснением на основе `DashMap` |
-| `infrastructure/rate_limit.rs` | Ограничитель частоты token bucket через `governor` |
+| `domain.rs` | Типы данных: `Change`, `ChangeDetail`, `RevisionInfo`, `Comment` и др. Типаж `GerritRepository` (25 асинхронных методов) покрывает все операции Gerrit API |
+| `domain/error.rs` | Перечисление `DomainError` с вариантами: `HttpStatus`, `Network`, `Decode`, `Tls`, `Auth`, `Cache`, `RateLimit`, `NotImplemented` |
+| `domain/mock.rs` | `MockGerritRepository` — полная in-memory реализация для линеаризованного тестирования |
+| `application.rs` | `GerritService<R>` — декоратор над любым `GerritRepository`. Применяет опциональный `MemoryCache` (TTL + LRU) и `TokenBucket` rate limiting. Реализует типаж `GerritRepository` |
+| `infrastructure/client.rs` | `GerritClient` — реализация `GerritRepository` на `reqwest`. Обрабатывает XSSI-префиксы, percent-encoding, JSON-декодирование, HTTP-ошибки |
+| `infrastructure/auth.rs` | Перечисление `AuthMode` (`HttpBasic`, `Bearer`, `GitCookies`). `parse_gitcookies()` для cookies в формате Netscape. Нормализация URL (HTTPS, добавление `/a` для HTTP Basic и GitCookies). `AuthManager` для поиска аутентификации по хосту |
+| `infrastructure/tls.rs` | `TlsConfig` + `build_tls_connector()`. Системное хранилище через `rustls-native-certs`, пользовательские CA через `rustls-pemfile`, `NoVerifier` для отключённой проверки |
+| `infrastructure/cache.rs` | `MemoryCache<K,V>` — TTL + LRU на основе `lru::LruCache` + `Mutex`. Потокобезопасный, ленивое истечение при доступе |
+| `infrastructure/rate_limit.rs` | `TokenBucket` — обёртка над `governor::RateLimiter` с алгоритмом GCRA. Блокирующий `acquire()` и неблокирующий `check()` |
 
 ### `gerrit-mcp` — MCP-сервер
 
 | Модуль | Назначение |
 |---|---|
-| `mcp/mod.rs` | Инициализация MCP-сервера, диспетчеризация обработчиков инструментов, маппинг ошибок (`CoreError` → коды ошибок MCP) |
-| `mcp/tools.rs` | Определения типов инструментов с JSON Schema (schemars): имена, описания, типы параметров, значения по умолчанию |
-| `config.rs` | Загрузка конфигурации: разбор TOML, переопределение через env, валидация |
-| `transport/http.rs` | Маршрутизатор Axum с `NeverSessionManager` (stateless, протокол MCP 2026-07-28): MCP-эндпоинт, health, readiness, metrics |
+| `mcp/mod.rs` | `GerritServer<R>` — MCP-сервер с `Arc<R>` репозиторием. 28 методов с аннотацией `#[tool]`. Динамическое разрешение клиента для multi-instance Gerrit (через параметр `gerrit_base_url`). Хелперы: `extract_bugs()`, `sort_by_date()`, `merge_options()` |
+| `mcp/tools.rs` | Типы параметров с JSON Schema (schemars) для всех 28 инструментов |
+| `mcp/changes.rs` | Реализации инструментов жизненного цикла: запрос, создание, установка ready/WIP/topic, abandon, revert, submit |
+| `mcp/reviews.rs` | Реализации инструментов ревью и cherry-pick: список файлов, diff, предложение/добавление ревьюеров, cherry-pick одного/цепочки |
+| `mcp/comments.rs` | Реализации инструментов комментариев: список, публикация, удаление черновиков, publish |
+| `config.rs` | Структура `Config` + подсекции. Разбор TOML, переопределение через env, валидация. Перечисление `ConfigError` |
+| `transport/http.rs` | Маршрутизатор Axum с `StreamableHttpService` от rmcp. `NeverSessionManager` для stateless MCP 2026-07-28. Опциональная middleware `mcp_auth_token` (сравнение за константное время). Защита от DNS rebinding через `allowed_hosts` |
 | `transport/stdio.rs` | Транспорт stdin/stdout через rmcp |
-| `health.rs` | Обработчики health check: живучесть, готовность с пробным запросом к Gerrit, сбор метрик Prometheus |
+| `health.rs` | Глобальный синглтон `Metrics` с атомарными счётчиками. Обработчики `/healthz`, `/readyz`, `/metrics` (формат Prometheus) |
 | `main.rs` | Точка входа: разбор CLI, инициализация конфигурации, выбор транспорта, обработка сигналов завершения |
 
 ---
@@ -116,7 +130,7 @@ transport/stdio.rs или http.rs   ← получение MCP-сообщени�
 mcp/mod.rs                       ← маршрутизация по имени инструмента
   │
   ▼
-gerrit-core::application.rs      ← сервисная логика, проверка кэша, ограничение частоты
+gerrit-core::application.rs      ← проверка кэша, ограничение частоты
   │
   ▼
 gerrit-core::infrastructure/
@@ -163,11 +177,12 @@ LLM-клиент
   в Docker-сборках на Alpine
 - `rustls-native-certs` обеспечивает интеграцию с системным хранилищем сертификатов при необходимости
 
-### Почему DashMap для кэша?
+### Почему LRU-кэш с Mutex?
 
-`DashMap` — конкурентная хэш-таблица: позволяет чтение без блокировок и мелкогранулярные
-блокировки для записи. Для MCP-сервера, обрабатывающего параллельные LLM-запросы, это
-избегает конкуренции, которую создал бы `Mutex<RwLock<HashMap>>`.
+`lru::LruCache`, обёрнутый в `Mutex`, обеспечивает простой и корректный конкурентный кэш.
+Для MCP-сервера, обрабатывающего параллельные LLM-запросы, грубая блокировка на кэше
+приемлема, так как операции с кэшем быстры, а основная задержка исходит от вызовов
+Gerrit API, а не от доступа к кэшу.
 
 ### Почему governor для ограничения частоты?
 

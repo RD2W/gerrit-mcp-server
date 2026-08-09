@@ -54,9 +54,10 @@ The `both` mode runs stdio and HTTP simultaneously.
 
 | Mode | Description |
 |---|---|
-| `token` | Bearer token from an environment variable |
-| `basic` | HTTP Basic Auth (username/password from env vars) |
-| `none` | No authentication header — for open instances |
+| `http_basic` / `basic` | HTTP Basic Auth (username + password from env vars) |
+| `bearer` / `token` | Bearer token from an environment variable |
+| `git_cookies` | Gerrit gitcookies file (Netscape cookie format) |
+| `none` | No authentication — for open instances |
 
 Credentials are **never** stored in the config file — only environment variable names.
 
@@ -74,11 +75,18 @@ When running in HTTP mode, rmcp validates the `Host` header against a configurab
 `allowed_hosts` list. Requests with non-matching hosts receive **403 Forbidden**.
 This prevents DNS rebinding attacks when the server is exposed on a network.
 
+### MCP endpoint token authentication
+
+The Streamable HTTP transport supports an optional Bearer token authentication
+on the MCP endpoint (`mcp_auth_token`). When configured, clients must include
+`Authorization: Bearer <token>` in requests. Token comparison uses
+constant-time equality to prevent timing attacks.
+
 ### Optimised for AOSP-scale codebases
 
 | Feature | Purpose |
 |---|---|
-| **In-memory cache** | TTL-based cache with configurable size, avoids repeated API calls |
+| **In-memory cache** | TTL + LRU cache with configurable size, avoids repeated API calls |
 | **Rate limiting** | Token-bucket limiter protects the Gerrit backend from overload |
 | **Pagination hints** | `has_more` field in responses tells the LLM when more results are available |
 
@@ -87,19 +95,19 @@ This prevents DNS rebinding attacks when the server is exposed on a network.
 | Endpoint | Purpose |
 |---|---|
 | `/healthz` | Liveness — always returns 200 if the server is running |
-| `/readyz` | Readiness — 200 when config is loaded and Gerrit is reachable |
-| `/metrics` | Prometheus-format metrics (request counts, latencies, cache stats) |
+| `/readyz` | Readiness — 200 when config is loaded and process is ready |
+| `/metrics` | Prometheus-format metrics (tool call counters, errors, uptime) |
 
 ### Docker
 
-Multi-stage build producing a UPX-compressed **~23 MB** Alpine-based image. Docker Compose config
-for local development and remote deployment.
+Multi-stage build producing a UPX-compressed **~23 MB** Alpine-based image. Docker Compose
+config for local development and remote deployment.
 
 ---
 
 ## Current status
 
-**v1.0.0.** The core HTTP client, all 28 MCP tools, dual transport, caching, rate
+**v1.1.1.** The core HTTP client, all 28 MCP tools, dual transport, caching, rate
 limiting, TLS, health endpoints, and Docker packaging are implemented and covered
-by **199 tests**. Supports MCP 2026-07-28 protocol (stateless Streamable HTTP,
+by **216 tests**. Supports MCP 2026-07-28 protocol (stateless Streamable HTTP,
 protocol negotiation) with legacy 2025-11-25 fallback.
