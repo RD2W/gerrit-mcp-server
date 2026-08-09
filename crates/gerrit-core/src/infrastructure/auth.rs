@@ -26,10 +26,9 @@ impl std::fmt::Debug for AuthMode {
                 .field("password", &"[redacted]")
                 .finish(),
             Self::Bearer(_) => f.write_str("Bearer([redacted])"),
-            Self::GitCookies { gitcookies_path } => f
-                .debug_tuple("GitCookies")
-                .field(gitcookies_path)
-                .finish(),
+            Self::GitCookies { gitcookies_path } => {
+                f.debug_tuple("GitCookies").field(gitcookies_path).finish()
+            }
         }
     }
 }
