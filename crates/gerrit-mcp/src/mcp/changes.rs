@@ -1,0 +1,458 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Maxim Krutovercev (RD2W) <mkrutovercev@yandex.ru>
+
+//! Change querying and management MCP tool implementations.
+
+use gerrit_core::domain::*;
+use rmcp::model::CallToolResult;
+
+use crate::health::metrics;
+use crate::mcp::GerritServer;
+use crate::mcp::tools::*;
+use crate::mcp::{
+    DEFAULT_STATUS_MERGED, GERRIT_OPTION_CURRENT_COMMIT, GERRIT_OPTION_CURRENT_REVISION,
+    GERRIT_OPTION_DETAILED_LABELS, REVIEWER_STATE_REVIEWER, extract_bugs, format_changes_output,
+    sort_by_date,
+};
+
+pub async fn query_changes<R: GerritRepository + Send + Sync + 'static>(
+    server: &GerritServer<R>,
+    params: QueryChangesParams,
+) -> CallToolResult {
+    let opts = params.options.unwrap_or_default();
+    metrics().record_query();
+
+    let result = if let Some(ref url) = params.gerrit_base_url {
+        match server.resolve_client(Some(url)) {
+            Ok(client) => {
+                client
+                    .query_changes(&params.query, params.limit, &opts)
+                    .await
+            }
+            Err(e) => return server.error(e),
+        }
+    } else {
+        server
+            .repo
+            .query_changes(&params.query, params.limit, &opts)
+            .await
+    };
+
+    match result {
+        Ok(mut changes) => {
+            if changes.is_empty() {
+                return server.text(format!("No changes found for query: {}", params.query));
+            }
+            sort_by_date(&mut changes);
+            server.text(format_changes_output(&changes))
+        }
+        Err(e) => server.error(format!("Failed to query changes: {e}")),
+    }
+}
+
+pub async fn query_changes_by_date_and_filters<R: GerritRepository + Send + Sync + 'static>(
+    server: &GerritServer<R>,
+    params: QueryChangesByDateParams,
+) -> CallToolResult {
+    let end_date = match chrono::NaiveDate::parse_from_str(&params.end_date, "%Y-%m-%d") {
+        Ok(d) => d,
+        Err(e) => return server.error(format!("Invalid end_date format: {e}")),
+    };
+    let end_plus_one = end_date
+        .succ_opt()
+        .unwrap_or(end_date)
+        .format("%Y-%m-%d")
+        .to_string();
+
+    let status = params.status.as_deref().unwrap_or(DEFAULT_STATUS_MERGED);
+    let mut query = format!(
+        "status:{} after:{} before:{}",
+        status, params.start_date, end_plus_one
+    );
+
+    if let Some(ref project) = params.project {
+        query.push_str(&format!(" project:{}", project));
+    }
+    if let Some(ref msg) = params.message_substring {
+        query.push_str(&format!(" message:{}", msg));
+    }
+
+    let opts = Vec::new();
+    metrics().record_query();
+    let result = if let Some(ref url) = params.gerrit_base_url {
+        match server.resolve_client(Some(url)) {
+            Ok(client) => client.query_changes(&query, params.limit, &opts).await,
+            Err(e) => return server.error(e),
+        }
+    } else {
+        server.repo.query_changes(&query, params.limit, &opts).await
+    };
+    match result {
+        Ok(mut changes) => {
+            if changes.is_empty() {
+                return server.text(format!("No changes found for query: {}", query));
+            }
+            sort_by_date(&mut changes);
+            server.text(format_changes_output(&changes))
+        }
+        Err(e) => server.error(format!("Failed to query changes by date: {e}")),
+    }
+}
+
+pub async fn get_change_details<R: GerritRepository + Send + Sync + 'static>(
+    server: &GerritServer<R>,
+    params: GetChangeDetailsParams,
+) -> CallToolResult {
+    let base = &[
+        GERRIT_OPTION_CURRENT_REVISION,
+        GERRIT_OPTION_CURRENT_COMMIT,
+        GERRIT_OPTION_DETAILED_LABELS,
+    ];
+    let extra = params.options.unwrap_or_default();
+    let opts = GerritServer::<R>::merge_options(base, &extra);
+
+    let result = if let Some(ref url) = params.gerrit_base_url {
+        match server.resolve_client(Some(url)) {
+            Ok(client) => client.get_change_detail(&params.change_id, &opts).await,
+            Err(e) => return server.error(e),
+        }
+    } else {
+        server
+            .repo
+            .get_change_detail(&params.change_id, &opts)
+            .await
+    };
+    match result {
+        Ok(detail) => {
+            let mut lines = Vec::new();
+            lines.push(format!("Subject: {}", detail.subject));
+            lines.push(format!(
+                "Owner: {} <{}>",
+                detail.owner.name.as_deref().unwrap_or("unknown"),
+                detail.owner.email.as_deref().unwrap_or("no email")
+            ));
+            lines.push(format!("Status: {}", detail.status));
+
+            if let Some(ref topic) = detail.topic {
+                lines.push(format!("Topic: {}", topic));
+            }
+
+            let commit_msg = detail
+                .revisions
+                .values()
+                .find_map(|r| r.commit.as_ref().map(|c| c.message.clone()))
+                .unwrap_or_default();
+            let bugs = extract_bugs(&commit_msg);
+            if !bugs.is_empty() {
+                lines.push(format!("Bugs: {}", bugs.join(", ")));
+            }
+
+            if let Some(ref reviewers) = detail.reviewers
+                && let Some(reviewer_list) = reviewers.get(REVIEWER_STATE_REVIEWER)
+                && !reviewer_list.is_empty()
+            {
+                for r in reviewer_list {
+                    if let Some(ref email) = r.email {
+                        lines.push(format!("Reviewer: {}", email));
+                    }
+                }
+            }
+
+            for (label_name, label_info) in &detail.labels {
+                for vote in &label_info.all {
+                    if let Some(val) = vote.value {
+                        lines.push(format!(
+                            "Vote {}: {} (by account {})",
+                            label_name, val, vote._account_id
+                        ));
+                    }
+                }
+            }
+
+            let recent: Vec<&Message> = detail.messages.iter().rev().take(3).collect();
+            if !recent.is_empty() {
+                lines.push("Recent messages:".to_string());
+                for msg in recent.iter().rev() {
+                    let author = msg
+                        .author
+                        .as_ref()
+                        .and_then(|a| a.email.clone())
+                        .unwrap_or_else(|| "unknown".to_string());
+                    lines.push(format!("  [{}] {}: {}", msg.date, author, msg.message));
+                }
+            }
+
+            server.text(lines.join("\n"))
+        }
+        Err(e) => server.error(format!("Failed to get change details: {e}")),
+    }
+}
+
+pub async fn get_commit_message<R: GerritRepository + Send + Sync + 'static>(
+    server: &GerritServer<R>,
+    params: GetCommitMessageParams,
+) -> CallToolResult {
+    let result = if let Some(ref url) = params.gerrit_base_url {
+        match server.resolve_client(Some(url)) {
+            Ok(client) => client.get_commit_message(&params.change_id).await,
+            Err(e) => return server.error(e),
+        }
+    } else {
+        server.repo.get_commit_message(&params.change_id).await
+    };
+    match result {
+        Ok(msg) => {
+            let mut lines = Vec::new();
+            lines.push(format!("Subject: {}", msg.subject));
+            lines.push(msg.full_message.clone());
+            if !msg.footers.is_empty() {
+                lines.push("Footers:".to_string());
+                for (k, v) in &msg.footers {
+                    lines.push(format!("  {}: {}", k, v));
+                }
+            }
+            server.text(lines.join("\n"))
+        }
+        Err(e) => server.error(format!("Failed to get commit message: {e}")),
+    }
+}
+
+pub async fn get_most_recent_cl<R: GerritRepository + Send + Sync + 'static>(
+    server: &GerritServer<R>,
+    params: GetMostRecentClParams,
+) -> CallToolResult {
+    let query = format!("owner:{}", params.user);
+    let result = if let Some(ref url) = params.gerrit_base_url {
+        match server.resolve_client(Some(url)) {
+            Ok(client) => client.query_changes(&query, Some(1), &[]).await,
+            Err(e) => return server.error(e),
+        }
+    } else {
+        server.repo.query_changes(&query, Some(1), &[]).await
+    };
+    match result {
+        Ok(changes) => {
+            if changes.is_empty() {
+                server.text(format!("No changes found for user: {}", params.user))
+            } else {
+                let c = &changes[0];
+                server.text(format!("{}_{}: {}", c._number, c.updated, c.subject))
+            }
+        }
+        Err(e) => server.error(format!("Failed to query most recent CL: {e}")),
+    }
+}
+
+pub async fn get_bugs_from_cl<R: GerritRepository + Send + Sync + 'static>(
+    server: &GerritServer<R>,
+    params: GetBugsFromClParams,
+) -> CallToolResult {
+    let result = if let Some(ref url) = params.gerrit_base_url {
+        match server.resolve_client(Some(url)) {
+            Ok(client) => client.get_commit(&params.change_id).await,
+            Err(e) => return server.error(e),
+        }
+    } else {
+        server.repo.get_commit(&params.change_id).await
+    };
+    match result {
+        Ok(commit) => {
+            let bugs = extract_bugs(&commit.message);
+            if bugs.is_empty() {
+                server.text("No bugs found in commit message.".to_string())
+            } else {
+                server.text(format!("Bugs: {}", bugs.join(", ")))
+            }
+        }
+        Err(e) => server.error(format!("Failed to get bugs from CL: {e}")),
+    }
+}
+
+pub async fn changes_submitted_together<R: GerritRepository + Send + Sync + 'static>(
+    server: &GerritServer<R>,
+    params: ChangesSubmittedTogetherParams,
+) -> CallToolResult {
+    let extra = params.options.unwrap_or_default();
+    let result = if let Some(ref url) = params.gerrit_base_url {
+        match server.resolve_client(Some(url)) {
+            Ok(client) => {
+                client
+                    .changes_submitted_together(&params.change_id, &extra)
+                    .await
+            }
+            Err(e) => return server.error(e),
+        }
+    } else {
+        server
+            .repo
+            .changes_submitted_together(&params.change_id, &extra)
+            .await
+    };
+    match result {
+        Ok(submitted) => {
+            let mut lines = Vec::new();
+            for c in &submitted.changes {
+                lines.push(format!("{}_{}: {}", c._number, c.updated, c.subject));
+            }
+            if submitted.non_visible_changes > 0 {
+                lines.push(format!(
+                    "({} changes not visible)",
+                    submitted.non_visible_changes
+                ));
+            }
+            if lines.is_empty() {
+                server.text("No changes submitted together.".to_string())
+            } else {
+                server.text(lines.join("\n"))
+            }
+        }
+        Err(e) => server.error(format!("Failed to get changes submitted together: {e}")),
+    }
+}
+
+pub async fn create_change<R: GerritRepository + Send + Sync + 'static>(
+    server: &GerritServer<R>,
+    params: CreateChangeParams,
+) -> CallToolResult {
+    let payload = CreateChangeRequest {
+        project: params.project,
+        branch: params.branch,
+        subject: params.subject,
+        topic: params.topic,
+        status: params.status,
+        is_private: None,
+        work_in_progress: None,
+        base_change: None,
+        new_branch: None,
+    };
+    match server.repo.create_change(&payload).await {
+        Ok(change) => server.text(format!(
+            "Created change {}_{}: {}",
+            change._number, change.updated, change.subject
+        )),
+        Err(e) => server.error(format!("Failed to create change: {e}")),
+    }
+}
+
+pub async fn set_ready_for_review<R: GerritRepository + Send + Sync + 'static>(
+    server: &GerritServer<R>,
+    params: SetReadyParams,
+) -> CallToolResult {
+    match server.repo.set_ready(&params.change_id).await {
+        Ok(()) => server.text(format!(
+            "Change {} marked as ready for review.",
+            params.change_id
+        )),
+        Err(e) => server.error(format!("Failed to set ready for review: {e}")),
+    }
+}
+
+pub async fn set_work_in_progress<R: GerritRepository + Send + Sync + 'static>(
+    server: &GerritServer<R>,
+    params: SetWipParams,
+) -> CallToolResult {
+    let payload = WipRequest {
+        message: params.message,
+    };
+    match server.repo.set_wip(&params.change_id, &payload).await {
+        Ok(()) => server.text(format!(
+            "Change {} marked as work-in-progress.",
+            params.change_id
+        )),
+        Err(e) => server.error(format!("Failed to set WIP: {e}")),
+    }
+}
+
+pub async fn set_topic<R: GerritRepository + Send + Sync + 'static>(
+    server: &GerritServer<R>,
+    params: SetTopicParams,
+) -> CallToolResult {
+    let payload = TopicRequest {
+        topic: params.topic.clone(),
+    };
+    match server.repo.set_topic(&params.change_id, &payload).await {
+        Ok(Some(_response)) => server.text(format!("Topic set to '{}'.", params.topic)),
+        Ok(None) => server.text("Topic deleted (empty response).".to_string()),
+        Err(e) => server.error(format!("Failed to set topic: {e}")),
+    }
+}
+
+pub async fn abandon_change<R: GerritRepository + Send + Sync + 'static>(
+    server: &GerritServer<R>,
+    params: AbandonChangeParams,
+) -> CallToolResult {
+    let payload = AbandonRequest {
+        message: params.message,
+        notify: None,
+    };
+    match server
+        .repo
+        .abandon_change(&params.change_id, &payload)
+        .await
+    {
+        Ok(change) => server.text(format!(
+            "Change {} abandoned: {}",
+            change._number, change.subject
+        )),
+        Err(e) => server.error(format!("Failed to abandon change: {e}")),
+    }
+}
+
+pub async fn revert_change<R: GerritRepository + Send + Sync + 'static>(
+    server: &GerritServer<R>,
+    params: RevertChangeParams,
+) -> CallToolResult {
+    match server
+        .repo
+        .revert_change(&params.change_id, params.message.as_deref())
+        .await
+    {
+        Ok(change) => server.text(format!(
+            "Revert created: {}_{}: {}",
+            change._number, change.updated, change.subject
+        )),
+        Err(e) => server.error(format!("Failed to revert change: {e}")),
+    }
+}
+
+pub async fn revert_submission<R: GerritRepository + Send + Sync + 'static>(
+    server: &GerritServer<R>,
+    params: RevertSubmissionParams,
+) -> CallToolResult {
+    match server
+        .repo
+        .revert_submission(&params.change_id, params.message.as_deref())
+        .await
+    {
+        Ok(changes) => {
+            let mut lines = Vec::new();
+            for c in &changes {
+                lines.push(format!("{}_{}: {}", c._number, c.updated, c.subject));
+            }
+            if lines.is_empty() {
+                server.text("No revert changes created.".to_string())
+            } else {
+                server.text(format!("Revert changes created:\n{}", lines.join("\n")))
+            }
+        }
+        Err(e) => server.error(format!("Failed to revert submission: {e}")),
+    }
+}
+
+pub async fn submit_change<R: GerritRepository + Send + Sync + 'static>(
+    server: &GerritServer<R>,
+    params: SubmitChangeParams,
+) -> CallToolResult {
+    let payload = SubmitRequest {
+        wait_for_merge: params.wait_for_merge,
+        on_behalf_of: None,
+        notify: None,
+    };
+    match server.repo.submit_change(&params.change_id, &payload).await {
+        Ok(result) => server.text(format!(
+            "Successfully submitted change {}: status={}",
+            result._number, result.status
+        )),
+        Err(e) => server.error(format!("Failed to submit change: {e}")),
+    }
+}

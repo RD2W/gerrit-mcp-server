@@ -24,7 +24,7 @@ rustls-native-certs.workspace = true
 rustls-pemfile.workspace = true
 tokio.workspace = true
 base64.workspace = true
-dashmap.workspace = true
+lru.workspace = true
 governor.workspace = true
 
 [dev-dependencies]

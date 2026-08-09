@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Maxim Krutovercev (RD2W) <mkrutovercev@yandex.ru>
 
+pub mod changes;
+pub mod comments;
+pub mod reviews;
 pub mod tools;
 
 use std::borrow::Cow;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use gerrit_core::domain::*;
@@ -16,17 +19,17 @@ use rmcp::{
     tool, tool_handler, tool_router,
 };
 
+use crate::health::metrics;
 use crate::mcp::tools::*;
 
 pub(crate) const GERRIT_OPTION_CURRENT_REVISION: &str = "CURRENT_REVISION";
 pub(crate) const GERRIT_OPTION_CURRENT_COMMIT: &str = "CURRENT_COMMIT";
 pub(crate) const GERRIT_OPTION_DETAILED_LABELS: &str = "DETAILED_LABELS";
 pub(crate) const REVIEWER_STATE_REVIEWER: &str = "REVIEWER";
-pub(crate) const REVIEWER_STATE_CC: &str = "CC";
 pub(crate) const DEFAULT_REVISION: &str = "current";
 pub(crate) const DEFAULT_STATUS_MERGED: &str = "merged";
 
-fn extract_bugs(commit_message: &str) -> Vec<String> {
+pub(crate) fn extract_bugs(commit_message: &str) -> Vec<String> {
     let mut bugs: Vec<String> = Vec::new();
 
     let prefix_re = Regex::new(r"(?im)^(?:Bug|Fixes|Closes):\s*(.+)").unwrap();
@@ -55,11 +58,11 @@ fn extract_bugs(commit_message: &str) -> Vec<String> {
     bugs
 }
 
-fn sort_by_date(changes: &mut [Change]) {
+pub(crate) fn sort_by_date(changes: &mut [Change]) {
     changes.sort_by(|a, b| b.updated.cmp(&a.updated));
 }
 
-fn format_change_line(change: &Change) -> String {
+pub(crate) fn format_change_line(change: &Change) -> String {
     let wip = if change.work_in_progress {
         "[WIP] "
     } else {
@@ -76,7 +79,7 @@ fn format_change_line(change: &Change) -> String {
     )
 }
 
-fn format_changes_output(changes: &[Change]) -> String {
+pub(crate) fn format_changes_output(changes: &[Change]) -> String {
     changes
         .iter()
         .map(format_change_line)
@@ -143,10 +146,12 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
     }
 
     fn text(&self, text: String) -> CallToolResult {
+        metrics().record_tool_call();
         CallToolResult::success(vec![ContentBlock::text(text)])
     }
 
     fn error(&self, msg: String) -> CallToolResult {
+        metrics().record_tool_error();
         CallToolResult::error(vec![ContentBlock::text(msg)])
     }
 
@@ -171,33 +176,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         &self,
         Parameters(params): Parameters<QueryChangesParams>,
     ) -> CallToolResult {
-        let opts = params.options.unwrap_or_default();
-
-        let result = if let Some(ref url) = params.gerrit_base_url {
-            match self.resolve_client(Some(url)) {
-                Ok(client) => {
-                    client
-                        .query_changes(&params.query, params.limit, &opts)
-                        .await
-                }
-                Err(e) => return self.error(e),
-            }
-        } else {
-            self.repo
-                .query_changes(&params.query, params.limit, &opts)
-                .await
-        };
-
-        match result {
-            Ok(mut changes) => {
-                if changes.is_empty() {
-                    return self.text(format!("No changes found for query: {}", params.query));
-                }
-                sort_by_date(&mut changes);
-                self.text(format_changes_output(&changes))
-            }
-            Err(e) => self.error(format!("Failed to query changes: {e}")),
-        }
+        changes::query_changes(self, params).await
     }
 
     #[tool(
@@ -208,48 +187,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         &self,
         Parameters(params): Parameters<QueryChangesByDateParams>,
     ) -> CallToolResult {
-        let end_date = match chrono::NaiveDate::parse_from_str(&params.end_date, "%Y-%m-%d") {
-            Ok(d) => d,
-            Err(e) => return self.error(format!("Invalid end_date format: {e}")),
-        };
-        let end_plus_one = end_date
-            .succ_opt()
-            .unwrap_or(end_date)
-            .format("%Y-%m-%d")
-            .to_string();
-
-        let status = params.status.as_deref().unwrap_or(DEFAULT_STATUS_MERGED);
-        let mut query = format!(
-            "status:{} after:{} before:{}",
-            status, params.start_date, end_plus_one
-        );
-
-        if let Some(ref project) = params.project {
-            query.push_str(&format!(" project:{}", project));
-        }
-        if let Some(ref msg) = params.message_substring {
-            query.push_str(&format!(" message:{}", msg));
-        }
-
-        let opts = Vec::new();
-        let result = if let Some(ref url) = params.gerrit_base_url {
-            match self.resolve_client(Some(url)) {
-                Ok(client) => client.query_changes(&query, params.limit, &opts).await,
-                Err(e) => return self.error(e),
-            }
-        } else {
-            self.repo.query_changes(&query, params.limit, &opts).await
-        };
-        match result {
-            Ok(mut changes) => {
-                if changes.is_empty() {
-                    return self.text(format!("No changes found for query: {}", query));
-                }
-                sort_by_date(&mut changes);
-                self.text(format_changes_output(&changes))
-            }
-            Err(e) => self.error(format!("Failed to query changes by date: {e}")),
-        }
+        changes::query_changes_by_date_and_filters(self, params).await
     }
 
     #[tool(
@@ -260,86 +198,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         &self,
         Parameters(params): Parameters<GetChangeDetailsParams>,
     ) -> CallToolResult {
-        let base = &[
-            GERRIT_OPTION_CURRENT_REVISION,
-            GERRIT_OPTION_CURRENT_COMMIT,
-            GERRIT_OPTION_DETAILED_LABELS,
-        ];
-        let extra = params.options.unwrap_or_default();
-        let opts = Self::merge_options(base, &extra);
-
-        let result = if let Some(ref url) = params.gerrit_base_url {
-            match self.resolve_client(Some(url)) {
-                Ok(client) => client.get_change_detail(&params.change_id, &opts).await,
-                Err(e) => return self.error(e),
-            }
-        } else {
-            self.repo.get_change_detail(&params.change_id, &opts).await
-        };
-        match result {
-            Ok(detail) => {
-                let mut lines = Vec::new();
-                lines.push(format!("Subject: {}", detail.subject));
-                lines.push(format!(
-                    "Owner: {} <{}>",
-                    detail.owner.name.as_deref().unwrap_or("unknown"),
-                    detail.owner.email.as_deref().unwrap_or("no email")
-                ));
-                lines.push(format!("Status: {}", detail.status));
-
-                if let Some(ref topic) = detail.topic {
-                    lines.push(format!("Topic: {}", topic));
-                }
-
-                let commit_msg = detail
-                    .revisions
-                    .values()
-                    .find_map(|r| r.commit.as_ref().map(|c| c.message.clone()))
-                    .unwrap_or_default();
-                let bugs = extract_bugs(&commit_msg);
-                if !bugs.is_empty() {
-                    lines.push(format!("Bugs: {}", bugs.join(", ")));
-                }
-
-                if let Some(ref reviewers) = detail.reviewers
-                    && let Some(reviewer_list) = reviewers.get(REVIEWER_STATE_REVIEWER)
-                    && !reviewer_list.is_empty()
-                {
-                    for r in reviewer_list {
-                        if let Some(ref email) = r.email {
-                            lines.push(format!("Reviewer: {}", email));
-                        }
-                    }
-                }
-
-                for (label_name, label_info) in &detail.labels {
-                    for vote in &label_info.all {
-                        if let Some(val) = vote.value {
-                            lines.push(format!(
-                                "Vote {}: {} (by account {})",
-                                label_name, val, vote._account_id
-                            ));
-                        }
-                    }
-                }
-
-                let recent: Vec<&Message> = detail.messages.iter().rev().take(3).collect();
-                if !recent.is_empty() {
-                    lines.push("Recent messages:".to_string());
-                    for msg in recent.iter().rev() {
-                        let author = msg
-                            .author
-                            .as_ref()
-                            .and_then(|a| a.email.clone())
-                            .unwrap_or_else(|| "unknown".to_string());
-                        lines.push(format!("  [{}] {}: {}", msg.date, author, msg.message));
-                    }
-                }
-
-                self.text(lines.join("\n"))
-            }
-            Err(e) => self.error(format!("Failed to get change details: {e}")),
-        }
+        changes::get_change_details(self, params).await
     }
 
     #[tool(
@@ -350,187 +209,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         &self,
         Parameters(params): Parameters<GetCommitMessageParams>,
     ) -> CallToolResult {
-        let result = if let Some(ref url) = params.gerrit_base_url {
-            match self.resolve_client(Some(url)) {
-                Ok(client) => client.get_commit_message(&params.change_id).await,
-                Err(e) => return self.error(e),
-            }
-        } else {
-            self.repo.get_commit_message(&params.change_id).await
-        };
-        match result {
-            Ok(msg) => {
-                let mut lines = Vec::new();
-                lines.push(format!("Subject: {}", msg.subject));
-                lines.push(msg.full_message.clone());
-                if !msg.footers.is_empty() {
-                    lines.push("Footers:".to_string());
-                    for (k, v) in &msg.footers {
-                        lines.push(format!("  {}: {}", k, v));
-                    }
-                }
-                self.text(lines.join("\n"))
-            }
-            Err(e) => self.error(format!("Failed to get commit message: {e}")),
-        }
-    }
-
-    #[tool(
-        name = "list_change_files",
-        description = "List files modified in a Gerrit change"
-    )]
-    pub async fn list_change_files(
-        &self,
-        Parameters(params): Parameters<ListChangeFilesParams>,
-    ) -> CallToolResult {
-        let result = if let Some(ref url) = params.gerrit_base_url {
-            match self.resolve_client(Some(url)) {
-                Ok(client) => client.list_files(&params.change_id).await,
-                Err(e) => return self.error(e),
-            }
-        } else {
-            self.repo.list_files(&params.change_id).await
-        };
-        match result {
-            Ok(files) => {
-                let mut lines = Vec::new();
-                for (path, info) in &files {
-                    if path == "/COMMIT_MSG" {
-                        continue;
-                    }
-                    let status_char = match info.status.as_deref() {
-                        Some("A") => 'A',
-                        Some("D") => 'D',
-                        Some("R") => 'R',
-                        Some("W") => 'W',
-                        Some("M") => 'M',
-                        _ => '?',
-                    };
-                    lines.push(format!(
-                        "[{}] {} (+{}, -{})",
-                        status_char, path, info.lines_inserted, info.lines_deleted
-                    ));
-                }
-                if lines.is_empty() {
-                    self.text("No files found.".to_string())
-                } else {
-                    self.text(lines.join("\n"))
-                }
-            }
-            Err(e) => self.error(format!("Failed to list change files: {e}")),
-        }
-    }
-
-    #[tool(
-        name = "get_file_diff",
-        description = "Get the diff for a file in a Gerrit change"
-    )]
-    pub async fn get_file_diff(
-        &self,
-        Parameters(params): Parameters<GetFileDiffParams>,
-    ) -> CallToolResult {
-        match self
-            .repo
-            .get_diff(&params.change_id, &params.file_path)
-            .await
-        {
-            Ok(text) => self.text(text),
-            Err(e) => self.error(format!("Failed to get file diff: {e}")),
-        }
-    }
-
-    #[tool(
-        name = "list_change_comments",
-        description = "List published comments on a Gerrit change"
-    )]
-    pub async fn list_change_comments(
-        &self,
-        Parameters(params): Parameters<ListChangeCommentsParams>,
-    ) -> CallToolResult {
-        let result = if let Some(ref url) = params.gerrit_base_url {
-            match self.resolve_client(Some(url)) {
-                Ok(client) => client.list_comments(&params.change_id).await,
-                Err(e) => return self.error(e),
-            }
-        } else {
-            self.repo.list_comments(&params.change_id).await
-        };
-        match result {
-            Ok(comments) => {
-                if comments.is_empty() {
-                    return self.text("No comments.".to_string());
-                }
-                let mut lines = Vec::new();
-                for (file, file_comments) in &comments {
-                    lines.push(format!("File: {}", file));
-                    for c in file_comments {
-                        let author = c
-                            .author
-                            .as_ref()
-                            .and_then(|a| a.email.clone())
-                            .unwrap_or_else(|| "unknown".to_string());
-                        let resolved = if c.unresolved == Some(true) {
-                            "[unresolved]"
-                        } else {
-                            "[resolved]"
-                        };
-                        let line_str = c
-                            .line
-                            .map(|l| format!("L{}", l))
-                            .unwrap_or_else(|| "N/A".to_string());
-                        lines.push(format!(
-                            "  {} {} [{}] {}: {}",
-                            line_str, resolved, c.id, author, c.message
-                        ));
-                    }
-                }
-                self.text(lines.join("\n"))
-            }
-            Err(e) => self.error(format!("Failed to list comments: {e}")),
-        }
-    }
-
-    #[tool(
-        name = "list_draft_comments",
-        description = "List draft comments on a Gerrit change"
-    )]
-    pub async fn list_draft_comments(
-        &self,
-        Parameters(params): Parameters<ListDraftCommentsParams>,
-    ) -> CallToolResult {
-        let result = if let Some(ref url) = params.gerrit_base_url {
-            match self.resolve_client(Some(url)) {
-                Ok(client) => client.list_drafts(&params.change_id).await,
-                Err(e) => return self.error(e),
-            }
-        } else {
-            self.repo.list_drafts(&params.change_id).await
-        };
-        match result {
-            Ok(drafts) => {
-                if drafts.is_empty() {
-                    return self.text("No draft comments.".to_string());
-                }
-                let mut lines = Vec::new();
-                for (file, file_drafts) in &drafts {
-                    lines.push(format!("File: {}", file));
-                    for d in file_drafts {
-                        let preview = if d.message.len() > 120 {
-                            format!("{}...", &d.message[..120])
-                        } else {
-                            d.message.clone()
-                        };
-                        let line_str = d
-                            .line
-                            .map(|l| format!("L{}", l))
-                            .unwrap_or_else(|| "N/A".to_string());
-                        lines.push(format!("  {} [{}] {}", line_str, d.id, preview));
-                    }
-                }
-                self.text(lines.join("\n"))
-            }
-            Err(e) => self.error(format!("Failed to list draft comments: {e}")),
-        }
+        changes::get_commit_message(self, params).await
     }
 
     #[tool(
@@ -541,26 +220,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         &self,
         Parameters(params): Parameters<GetMostRecentClParams>,
     ) -> CallToolResult {
-        let query = format!("owner:{}", params.user);
-        let result = if let Some(ref url) = params.gerrit_base_url {
-            match self.resolve_client(Some(url)) {
-                Ok(client) => client.query_changes(&query, Some(1), &[]).await,
-                Err(e) => return self.error(e),
-            }
-        } else {
-            self.repo.query_changes(&query, Some(1), &[]).await
-        };
-        match result {
-            Ok(changes) => {
-                if changes.is_empty() {
-                    self.text(format!("No changes found for user: {}", params.user))
-                } else {
-                    let c = &changes[0];
-                    self.text(format!("{}_{}: {}", c._number, c.updated, c.subject))
-                }
-            }
-            Err(e) => self.error(format!("Failed to query most recent CL: {e}")),
-        }
+        changes::get_most_recent_cl(self, params).await
     }
 
     #[tool(
@@ -571,82 +231,15 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         &self,
         Parameters(params): Parameters<GetBugsFromClParams>,
     ) -> CallToolResult {
-        let result = if let Some(ref url) = params.gerrit_base_url {
-            match self.resolve_client(Some(url)) {
-                Ok(client) => client.get_commit(&params.change_id).await,
-                Err(e) => return self.error(e),
-            }
-        } else {
-            self.repo.get_commit(&params.change_id).await
-        };
-        match result {
-            Ok(commit) => {
-                let bugs = extract_bugs(&commit.message);
-                if bugs.is_empty() {
-                    self.text("No bugs found in commit message.".to_string())
-                } else {
-                    self.text(format!("Bugs: {}", bugs.join(", ")))
-                }
-            }
-            Err(e) => self.error(format!("Failed to get bugs from CL: {e}")),
-        }
+        changes::get_bugs_from_cl(self, params).await
     }
 
-    #[tool(
-        name = "suggest_reviewers",
-        description = "Suggest reviewers for a Gerrit change"
-    )]
-    pub async fn suggest_reviewers(
+    #[tool(name = "create_change", description = "Create a new change in Gerrit")]
+    pub async fn create_change(
         &self,
-        Parameters(params): Parameters<SuggestReviewersParams>,
+        Parameters(params): Parameters<CreateChangeParams>,
     ) -> CallToolResult {
-        let exclude_groups = params.exclude_groups.unwrap_or(false);
-        let result = if let Some(ref url) = params.gerrit_base_url {
-            match self.resolve_client(Some(url)) {
-                Ok(client) => {
-                    client
-                        .suggest_reviewers(
-                            &params.change_id,
-                            &params.query,
-                            params.limit,
-                            exclude_groups,
-                            params.reviewer_state.as_deref(),
-                        )
-                        .await
-                }
-                Err(e) => return self.error(e),
-            }
-        } else {
-            self.repo
-                .suggest_reviewers(
-                    &params.change_id,
-                    &params.query,
-                    params.limit,
-                    exclude_groups,
-                    params.reviewer_state.as_deref(),
-                )
-                .await
-        };
-        match result {
-            Ok(suggestions) => {
-                if suggestions.is_empty() {
-                    return self.text("No reviewer suggestions found.".to_string());
-                }
-                let mut lines = Vec::new();
-                for s in &suggestions {
-                    if let Some(ref account) = s.account {
-                        let name = account.name.as_deref().unwrap_or("unknown");
-                        let email = account.email.as_deref().unwrap_or("no email");
-                        lines.push(format!("Account: {} <{}>", name, email));
-                    }
-                    if let Some(ref group) = s.group {
-                        lines.push(format!("Group: {}", group.name));
-                    }
-                }
-                self.text(lines.join("\n"))
-            }
-            Err(e) => self.error(format!("Failed to suggest reviewers: {e}")),
-        }
+        changes::create_change(self, params).await
     }
 
     #[tool(
@@ -657,101 +250,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         &self,
         Parameters(params): Parameters<ChangesSubmittedTogetherParams>,
     ) -> CallToolResult {
-        let extra = params.options.unwrap_or_default();
-        let result = if let Some(ref url) = params.gerrit_base_url {
-            match self.resolve_client(Some(url)) {
-                Ok(client) => {
-                    client
-                        .changes_submitted_together(&params.change_id, &extra)
-                        .await
-                }
-                Err(e) => return self.error(e),
-            }
-        } else {
-            self.repo
-                .changes_submitted_together(&params.change_id, &extra)
-                .await
-        };
-        match result {
-            Ok(submitted) => {
-                let mut lines = Vec::new();
-                for c in &submitted.changes {
-                    lines.push(format!("{}_{}: {}", c._number, c.updated, c.subject));
-                }
-                if submitted.non_visible_changes > 0 {
-                    lines.push(format!(
-                        "({} changes not visible)",
-                        submitted.non_visible_changes
-                    ));
-                }
-                if lines.is_empty() {
-                    self.text("No changes submitted together.".to_string())
-                } else {
-                    self.text(lines.join("\n"))
-                }
-            }
-            Err(e) => self.error(format!("Failed to get changes submitted together: {e}")),
-        }
-    }
-
-    #[tool(name = "create_change", description = "Create a new change in Gerrit")]
-    pub async fn create_change(
-        &self,
-        Parameters(params): Parameters<CreateChangeParams>,
-    ) -> CallToolResult {
-        let payload = CreateChangeRequest {
-            project: params.project,
-            branch: params.branch,
-            subject: params.subject,
-            topic: params.topic,
-            status: params.status,
-            is_private: None,
-            work_in_progress: None,
-            base_change: None,
-            new_branch: None,
-        };
-        match self.repo.create_change(&payload).await {
-            Ok(change) => self.text(format!(
-                "Created change {}_{}: {}",
-                change._number, change.updated, change.subject
-            )),
-            Err(e) => self.error(format!("Failed to create change: {e}")),
-        }
-    }
-
-    #[tool(
-        name = "add_reviewer",
-        description = "Add a reviewer to a Gerrit change"
-    )]
-    pub async fn add_reviewer(
-        &self,
-        Parameters(params): Parameters<AddReviewerParams>,
-    ) -> CallToolResult {
-        let state = params.state.as_deref().unwrap_or(REVIEWER_STATE_REVIEWER);
-        if state != REVIEWER_STATE_REVIEWER && state != REVIEWER_STATE_CC {
-            return self.error(format!("Invalid state '{}': must be REVIEWER or CC", state));
-        }
-        let payload = AddReviewerRequest {
-            reviewer: params.reviewer,
-            confirmed: Some(true),
-            state: Some(state.to_string()),
-            notify: None,
-        };
-        match self.repo.add_reviewer(&params.change_id, &payload).await {
-            Ok(result) => {
-                if let Some(ref err_msg) = result.error {
-                    return self.error(format!("Failed to add reviewer: {}", err_msg));
-                }
-                if result.reviewers.is_empty() {
-                    self.text("Reviewer added successfully.".to_string())
-                } else {
-                    let reviewer = &result.reviewers[0];
-                    let email = reviewer.email.as_deref().unwrap_or("unknown");
-                    self.text(format!("Added {} as {}.", email, state))
-                }
-            }
-            Err(e) => self.error(format!("Failed to add reviewer: {e}")),
-        }
+        changes::changes_submitted_together(self, params).await
     }
 
     #[tool(
@@ -762,13 +261,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         &self,
         Parameters(params): Parameters<SetReadyParams>,
     ) -> CallToolResult {
-        match self.repo.set_ready(&params.change_id).await {
-            Ok(()) => self.text(format!(
-                "Change {} marked as ready for review.",
-                params.change_id
-            )),
-            Err(e) => self.error(format!("Failed to set ready for review: {e}")),
-        }
+        changes::set_ready_for_review(self, params).await
     }
 
     #[tool(
@@ -779,16 +272,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         &self,
         Parameters(params): Parameters<SetWipParams>,
     ) -> CallToolResult {
-        let payload = WipRequest {
-            message: params.message,
-        };
-        match self.repo.set_wip(&params.change_id, &payload).await {
-            Ok(()) => self.text(format!(
-                "Change {} marked as work-in-progress.",
-                params.change_id
-            )),
-            Err(e) => self.error(format!("Failed to set WIP: {e}")),
-        }
+        changes::set_work_in_progress(self, params).await
     }
 
     #[tool(name = "set_topic", description = "Set the topic for a Gerrit change")]
@@ -796,14 +280,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         &self,
         Parameters(params): Parameters<SetTopicParams>,
     ) -> CallToolResult {
-        let payload = TopicRequest {
-            topic: params.topic.clone(),
-        };
-        match self.repo.set_topic(&params.change_id, &payload).await {
-            Ok(Some(_response)) => self.text(format!("Topic set to '{}'.", params.topic)),
-            Ok(None) => self.text("Topic deleted (empty response).".to_string()),
-            Err(e) => self.error(format!("Failed to set topic: {e}")),
-        }
+        changes::set_topic(self, params).await
     }
 
     #[tool(name = "abandon_change", description = "Abandon a Gerrit change")]
@@ -811,17 +288,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         &self,
         Parameters(params): Parameters<AbandonChangeParams>,
     ) -> CallToolResult {
-        let payload = AbandonRequest {
-            message: params.message,
-            notify: None,
-        };
-        match self.repo.abandon_change(&params.change_id, &payload).await {
-            Ok(change) => self.text(format!(
-                "Change {} abandoned: {}",
-                change._number, change.subject
-            )),
-            Err(e) => self.error(format!("Failed to abandon change: {e}")),
-        }
+        changes::abandon_change(self, params).await
     }
 
     #[tool(name = "revert_change", description = "Revert a Gerrit change")]
@@ -829,17 +296,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         &self,
         Parameters(params): Parameters<RevertChangeParams>,
     ) -> CallToolResult {
-        match self
-            .repo
-            .revert_change(&params.change_id, params.message.as_deref())
-            .await
-        {
-            Ok(change) => self.text(format!(
-                "Revert created: {}_{}: {}",
-                change._number, change.updated, change.subject
-            )),
-            Err(e) => self.error(format!("Failed to revert change: {e}")),
-        }
+        changes::revert_change(self, params).await
     }
 
     #[tool(name = "revert_submission", description = "Revert a Gerrit submission")]
@@ -847,309 +304,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         &self,
         Parameters(params): Parameters<RevertSubmissionParams>,
     ) -> CallToolResult {
-        match self
-            .repo
-            .revert_submission(&params.change_id, params.message.as_deref())
-            .await
-        {
-            Ok(changes) => {
-                let mut lines = Vec::new();
-                for c in &changes {
-                    lines.push(format!("{}_{}: {}", c._number, c.updated, c.subject));
-                }
-                if lines.is_empty() {
-                    self.text("No revert changes created.".to_string())
-                } else {
-                    self.text(format!("Revert changes created:\n{}", lines.join("\n")))
-                }
-            }
-            Err(e) => self.error(format!("Failed to revert submission: {e}")),
-        }
-    }
-
-    #[tool(
-        name = "post_review_comment",
-        description = "Post a review comment on a Gerrit change"
-    )]
-    pub async fn post_review_comment(
-        &self,
-        Parameters(params): Parameters<PostReviewCommentParams>,
-    ) -> CallToolResult {
-        let comment = CommentInput {
-            id: None,
-            path: Some(params.file_path.clone()),
-            side: None,
-            line: Some(params.line_number),
-            range: None,
-            in_reply_to: None,
-            updated: None,
-            message: params.message.clone(),
-            tag: None,
-            unresolved: params.unresolved,
-        };
-        let mut comments_map: BTreeMap<String, Vec<CommentInput>> = BTreeMap::new();
-        comments_map.insert(params.file_path.clone(), vec![comment]);
-        let batch = CommentBatchInput {
-            comments: Some(comments_map),
-            drafts: None,
-            omit_duplicate_comments: None,
-            notify: None,
-        };
-        match self.repo.post_review(&params.change_id, &batch).await {
-            Ok(()) => self.text("Review comment posted.".to_string()),
-            Err(e) => self.error(format!("Failed to post review comment: {e}")),
-        }
-    }
-
-    #[tool(
-        name = "post_draft_comment",
-        description = "Post a draft comment on a Gerrit change"
-    )]
-    pub async fn post_draft_comment(
-        &self,
-        Parameters(params): Parameters<PostDraftCommentParams>,
-    ) -> CallToolResult {
-        let mut message = params.message.clone();
-        let suggestion = if message.starts_with("suggestion:") {
-            let s = message
-                .strip_prefix("suggestion:")
-                .unwrap_or("")
-                .trim()
-                .to_string();
-            message = s;
-            params.suggestion.or(Some(message.clone()))
-        } else {
-            params.suggestion.clone()
-        };
-
-        let line = if params.start_line.is_some()
-            && params.start_character.is_some()
-            && params.end_line.is_some()
-            && params.end_character.is_some()
-        {
-            params.end_line
-        } else {
-            Some(params.line_number)
-        };
-
-        let draft = DraftInput {
-            path: params.file_path.clone(),
-            line,
-            message: message.clone(),
-            side: None,
-            parent: None,
-            in_reply_to: params.in_reply_to,
-            updated: None,
-            tag: None,
-        };
-        match self.repo.post_draft(&params.change_id, &draft).await {
-            Ok(draft_id) => {
-                let mut msg = format!("Draft comment posted (id: {}).", draft_id);
-                if let Some(s) = suggestion {
-                    msg.push_str(&format!("\nSuggestion: {}", s));
-                }
-                self.text(msg)
-            }
-            Err(e) => self.error(format!("Failed to post draft comment: {e}")),
-        }
-    }
-
-    #[tool(
-        name = "delete_draft_comment",
-        description = "Delete a specific draft comment on a Gerrit change"
-    )]
-    pub async fn delete_draft_comment(
-        &self,
-        Parameters(params): Parameters<DeleteDraftCommentParams>,
-    ) -> CallToolResult {
-        match self
-            .repo
-            .delete_draft(&params.change_id, &params.draft_id)
-            .await
-        {
-            Ok(()) => self.text(format!("Draft {} deleted.", params.draft_id)),
-            Err(e) => self.error(format!("Failed to delete draft: {e}")),
-        }
-    }
-
-    #[tool(
-        name = "delete_draft_comments",
-        description = "Delete all draft comments on a Gerrit change"
-    )]
-    pub async fn delete_draft_comments(
-        &self,
-        Parameters(params): Parameters<DeleteDraftCommentsParams>,
-    ) -> CallToolResult {
-        let drafts = match self.repo.list_drafts(&params.change_id).await {
-            Ok(d) => d,
-            Err(e) => return self.error(format!("Failed to list drafts: {e}")),
-        };
-
-        let mut draft_ids: Vec<String> = Vec::new();
-        for file_drafts in drafts.values() {
-            for d in file_drafts {
-                draft_ids.push(d.id.clone());
-            }
-        }
-
-        let mut errors = Vec::new();
-        let mut deleted = 0;
-        for id in &draft_ids {
-            match self.repo.delete_draft(&params.change_id, id).await {
-                Ok(()) => deleted += 1,
-                Err(e) => errors.push(format!("  {}: {}", id, e)),
-            }
-        }
-
-        let mut lines = Vec::new();
-        lines.push(format!(
-            "Deleted {} of {} draft comments.",
-            deleted,
-            draft_ids.len()
-        ));
-        if !errors.is_empty() {
-            lines.push("Errors:".to_string());
-            lines.extend(errors);
-        }
-        self.text(lines.join("\n"))
-    }
-
-    #[tool(
-        name = "publish_drafts",
-        description = "Publish draft comments on a Gerrit change"
-    )]
-    pub async fn publish_drafts(
-        &self,
-        Parameters(params): Parameters<PublishDraftsParams>,
-    ) -> CallToolResult {
-        let payload = PublishDraftsRequest { notify: None };
-        match self.repo.publish_drafts(&params.change_id, &payload).await {
-            Ok(()) => self.text("All drafts published.".to_string()),
-            Err(e) => self.error(format!("Failed to publish drafts: {e}")),
-        }
-    }
-
-    #[tool(
-        name = "cherry_pick_change",
-        description = "Cherry-pick a Gerrit change to a destination branch"
-    )]
-    pub async fn cherry_pick_change(
-        &self,
-        Parameters(params): Parameters<CherryPickChangeParams>,
-    ) -> CallToolResult {
-        let revision = params.revision_id.as_deref().unwrap_or(DEFAULT_REVISION);
-        let payload = CherryPickRequest {
-            message: params.message,
-            destination: params.destination,
-            parent: None,
-            base: None,
-            notify: None,
-        };
-        match self
-            .repo
-            .cherry_pick(&params.change_id, revision, &payload)
-            .await
-        {
-            Ok(result) => self.text(format!(
-                "Successfully cherry-picked to new CL: {}",
-                result._number
-            )),
-            Err(e) => self.error(format!("Failed to cherry-pick change: {e}")),
-        }
-    }
-
-    #[tool(
-        name = "cherry_pick_chain",
-        description = "Cherry-pick a chain of Gerrit changes to a destination branch"
-    )]
-    pub async fn cherry_pick_chain(
-        &self,
-        Parameters(params): Parameters<CherryPickChainParams>,
-    ) -> CallToolResult {
-        let revision = params.revision_id.as_deref().unwrap_or(DEFAULT_REVISION);
-
-        let related = match self.repo.get_related(&params.change_id, revision).await {
-            Ok(r) => r,
-            Err(e) => return self.error(format!("Failed to get related changes: {e}")),
-        };
-
-        if related.is_empty() {
-            return self.text("No related changes found.".to_string());
-        }
-
-        let reversed: Vec<&RelatedChange> = related.iter().rev().collect();
-        let mut results: Vec<String> = Vec::new();
-        let mut base: Option<String> = None;
-
-        for rc in &reversed {
-            let cp_payload = CherryPickRequest {
-                message: None,
-                destination: params.destination.clone(),
-                parent: None,
-                base: base.clone(),
-                notify: None,
-            };
-
-            let change_id_str = rc._change_number.to_string();
-            let revision_str = rc._revision_number.to_string();
-
-            match self
-                .repo
-                .cherry_pick(&change_id_str, &revision_str, &cp_payload)
-                .await
-            {
-                Ok(result) => {
-                    let new_number = result._number;
-                    let new_id = new_number.to_string();
-                    results.push(format!(
-                        "Cherry-picked {} (rev {}) -> new CL: {}",
-                        change_id_str, revision_str, new_number
-                    ));
-
-                    let base_opts = vec![
-                        GERRIT_OPTION_CURRENT_REVISION.to_string(),
-                        GERRIT_OPTION_CURRENT_COMMIT.to_string(),
-                    ];
-                    match self.repo.get_change_detail(&new_id, &base_opts).await {
-                        Ok(detail) => {
-                            if let Some(ref rev_key) = detail.current_revision
-                                && let Some(rev_info) = detail.revisions.get(rev_key)
-                                && let Some(ref commit) = rev_info.commit
-                            {
-                                base = Some(commit.message.clone());
-                            }
-                            if base.is_none() {
-                                base = Some(new_id);
-                            }
-                        }
-                        Err(_) => {
-                            base = Some(new_id);
-                        }
-                    }
-                }
-                Err(e) => {
-                    if !results.is_empty() {
-                        results.push(format!(
-                            "Partial failure at change {} (rev {}): {}",
-                            change_id_str, revision_str, e
-                        ));
-                        let mut out = results.join("\n");
-                        out.push_str("\nSome changes were cherry-picked successfully.");
-                        return self.text(out);
-                    }
-                    return self.error(format!(
-                        "Failed to cherry-pick change {} (rev {}): {}",
-                        change_id_str, revision_str, e
-                    ));
-                }
-            }
-        }
-
-        self.text(format!(
-            "Successfully cherry-picked chain of {} changes:\n{}",
-            reversed.len(),
-            results.join("\n")
-        ))
+        changes::revert_submission(self, params).await
     }
 
     #[tool(
@@ -1160,18 +315,150 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         &self,
         Parameters(params): Parameters<SubmitChangeParams>,
     ) -> CallToolResult {
-        let payload = SubmitRequest {
-            wait_for_merge: params.wait_for_merge,
-            on_behalf_of: None,
-            notify: None,
-        };
-        match self.repo.submit_change(&params.change_id, &payload).await {
-            Ok(result) => self.text(format!(
-                "Successfully submitted change {}: status={}",
-                result._number, result.status
-            )),
-            Err(e) => self.error(format!("Failed to submit change: {e}")),
-        }
+        changes::submit_change(self, params).await
+    }
+
+    #[tool(
+        name = "list_change_comments",
+        description = "List published comments on a Gerrit change"
+    )]
+    pub async fn list_change_comments(
+        &self,
+        Parameters(params): Parameters<ListChangeCommentsParams>,
+    ) -> CallToolResult {
+        comments::list_change_comments(self, params).await
+    }
+
+    #[tool(
+        name = "list_draft_comments",
+        description = "List draft comments on a Gerrit change"
+    )]
+    pub async fn list_draft_comments(
+        &self,
+        Parameters(params): Parameters<ListDraftCommentsParams>,
+    ) -> CallToolResult {
+        comments::list_draft_comments(self, params).await
+    }
+
+    #[tool(
+        name = "post_review_comment",
+        description = "Post a review comment on a Gerrit change"
+    )]
+    pub async fn post_review_comment(
+        &self,
+        Parameters(params): Parameters<PostReviewCommentParams>,
+    ) -> CallToolResult {
+        comments::post_review_comment(self, params).await
+    }
+
+    #[tool(
+        name = "post_draft_comment",
+        description = "Post a draft comment on a Gerrit change"
+    )]
+    pub async fn post_draft_comment(
+        &self,
+        Parameters(params): Parameters<PostDraftCommentParams>,
+    ) -> CallToolResult {
+        comments::post_draft_comment(self, params).await
+    }
+
+    #[tool(
+        name = "delete_draft_comment",
+        description = "Delete a specific draft comment on a Gerrit change"
+    )]
+    pub async fn delete_draft_comment(
+        &self,
+        Parameters(params): Parameters<DeleteDraftCommentParams>,
+    ) -> CallToolResult {
+        comments::delete_draft_comment(self, params).await
+    }
+
+    #[tool(
+        name = "delete_draft_comments",
+        description = "Delete all draft comments on a Gerrit change"
+    )]
+    pub async fn delete_draft_comments(
+        &self,
+        Parameters(params): Parameters<DeleteDraftCommentsParams>,
+    ) -> CallToolResult {
+        comments::delete_draft_comments(self, params).await
+    }
+
+    #[tool(
+        name = "publish_drafts",
+        description = "Publish draft comments on a Gerrit change"
+    )]
+    pub async fn publish_drafts(
+        &self,
+        Parameters(params): Parameters<PublishDraftsParams>,
+    ) -> CallToolResult {
+        comments::publish_drafts(self, params).await
+    }
+
+    #[tool(
+        name = "list_change_files",
+        description = "List files modified in a Gerrit change"
+    )]
+    pub async fn list_change_files(
+        &self,
+        Parameters(params): Parameters<ListChangeFilesParams>,
+    ) -> CallToolResult {
+        reviews::list_change_files(self, params).await
+    }
+
+    #[tool(
+        name = "get_file_diff",
+        description = "Get the diff for a file in a Gerrit change"
+    )]
+    pub async fn get_file_diff(
+        &self,
+        Parameters(params): Parameters<GetFileDiffParams>,
+    ) -> CallToolResult {
+        reviews::get_file_diff(self, params).await
+    }
+
+    #[tool(
+        name = "suggest_reviewers",
+        description = "Suggest reviewers for a Gerrit change"
+    )]
+    pub async fn suggest_reviewers(
+        &self,
+        Parameters(params): Parameters<SuggestReviewersParams>,
+    ) -> CallToolResult {
+        reviews::suggest_reviewers(self, params).await
+    }
+
+    #[tool(
+        name = "add_reviewer",
+        description = "Add a reviewer to a Gerrit change"
+    )]
+    pub async fn add_reviewer(
+        &self,
+        Parameters(params): Parameters<AddReviewerParams>,
+    ) -> CallToolResult {
+        reviews::add_reviewer(self, params).await
+    }
+
+    #[tool(
+        name = "cherry_pick_change",
+        description = "Cherry-pick a Gerrit change to a destination branch"
+    )]
+    pub async fn cherry_pick_change(
+        &self,
+        Parameters(params): Parameters<CherryPickChangeParams>,
+    ) -> CallToolResult {
+        reviews::cherry_pick_change(self, params).await
+    }
+
+    #[tool(
+        name = "cherry_pick_chain",
+        description = "Cherry-pick a chain of Gerrit changes to a destination branch"
+    )]
+    pub async fn cherry_pick_chain(
+        &self,
+        Parameters(params): Parameters<CherryPickChainParams>,
+    ) -> CallToolResult {
+        reviews::cherry_pick_chain(self, params).await
     }
 }
 
@@ -1196,6 +483,7 @@ impl<R: GerritRepository + Send + Sync + 'static> ServerHandler for GerritServer
 mod tests {
     use super::*;
     use gerrit_core::domain::MockGerritRepository;
+    use std::collections::BTreeMap;
 
     fn extract_text(result: CallToolResult) -> String {
         if let Some(text) = result.content.iter().find_map(|c| match c {

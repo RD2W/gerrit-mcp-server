@@ -20,7 +20,7 @@ use serde_json::json;
 
 /// Global metrics singleton (created once on first access).
 #[derive(Debug)]
-pub(crate) struct Metrics {
+pub struct Metrics {
     /// Total MCP tool calls processed.
     tool_calls_total: AtomicU64,
     /// Tool calls that returned an error.
@@ -34,7 +34,7 @@ pub(crate) struct Metrics {
 static METRICS: OnceLock<Metrics> = OnceLock::new();
 
 #[must_use]
-pub(crate) fn metrics() -> &'static Metrics {
+pub fn metrics() -> &'static Metrics {
     METRICS.get_or_init(Metrics::new)
 }
 
@@ -48,17 +48,14 @@ impl Metrics {
         }
     }
 
-    #[allow(dead_code)]
     pub fn record_tool_call(&self) {
         self.tool_calls_total.fetch_add(1, Ordering::Relaxed);
     }
 
-    #[allow(dead_code)]
     pub fn record_tool_error(&self) {
         self.tool_calls_errors.fetch_add(1, Ordering::Relaxed);
     }
 
-    #[allow(dead_code)]
     pub fn record_query(&self) {
         self.queries_total.fetch_add(1, Ordering::Relaxed);
     }
