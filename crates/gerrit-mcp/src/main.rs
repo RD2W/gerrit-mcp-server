@@ -98,7 +98,9 @@ async fn main() -> anyhow::Result<()> {
         );
     }
 
-    let server = GerritServer::new(service).with_client_factory(client_config);
+    let server = GerritServer::new(service)
+        .with_client_factory(client_config)
+        .with_read_only(config.service.read_only);
 
     run_transport(&config, server).await?;
 

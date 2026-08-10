@@ -92,6 +92,7 @@ pub struct GerritServer<R: GerritRepository + Send + Sync + 'static> {
     tool_router: ToolRouter<Self>,
     client_config: Option<GerritClientConfig>,
     client_cache: Arc<Mutex<HashMap<String, Arc<GerritClient>>>>,
+    read_only: bool,
 }
 
 impl<R: GerritRepository + Send + Sync + 'static> Clone for GerritServer<R> {
@@ -101,6 +102,7 @@ impl<R: GerritRepository + Send + Sync + 'static> Clone for GerritServer<R> {
             tool_router: self.tool_router.clone(),
             client_config: self.client_config.clone(),
             client_cache: self.client_cache.clone(),
+            read_only: self.read_only,
         }
     }
 }
@@ -112,12 +114,26 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
             tool_router: ToolRouter::new(),
             client_config: None,
             client_cache: Arc::new(Mutex::new(HashMap::new())),
+            read_only: false,
         }
     }
 
     pub fn with_client_factory(mut self, config: GerritClientConfig) -> Self {
         self.client_config = Some(config);
         self
+    }
+
+    pub fn with_read_only(mut self, read_only: bool) -> Self {
+        self.read_only = read_only;
+        self
+    }
+
+    fn check_not_readonly(&self, action: &str) -> Option<CallToolResult> {
+        if self.read_only {
+            Some(self.error(format!("Cannot {action} in read-only mode.")))
+        } else {
+            None
+        }
     }
 
     fn resolve_client(&self, override_url: Option<&str>) -> Result<Arc<GerritClient>, String> {
@@ -764,5 +780,65 @@ mod tests {
         assert!(opts.contains(&GERRIT_OPTION_CURRENT_REVISION.to_string()));
         assert!(opts.contains(&GERRIT_OPTION_CURRENT_COMMIT.to_string()));
         assert!(opts.contains(&GERRIT_OPTION_DETAILED_LABELS.to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_read_only_mode_blocks_write() {
+        let mock = MockGerritRepository::default();
+        let server = GerritServer::new(mock).with_read_only(true);
+
+        let params = CreateChangeParams {
+            project: "test".into(),
+            branch: "main".into(),
+            subject: "Test".into(),
+            topic: None,
+            status: None,
+            gerrit_base_url: None,
+        };
+        let result = server.create_change(Parameters(params)).await;
+        assert!(result.is_error.unwrap_or(false));
+        let text = extract_text(result);
+        assert!(
+            text.contains("read-only"),
+            "expected read-only error, got: {text}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_read_allowed_in_read_only_mode() {
+        let mock = MockGerritRepository::default();
+        mock.push_query_changes_result(Ok(vec![MockGerritRepository::make_change(
+            12345,
+            "Test Subject",
+        )]));
+        let server = GerritServer::new(mock).with_read_only(true);
+
+        let params = QueryChangesParams {
+            query: "status:open".to_string(),
+            gerrit_base_url: None,
+            limit: None,
+            options: None,
+        };
+        let result = server.query_changes(Parameters(params)).await;
+        assert!(!result.is_error.unwrap_or(true));
+    }
+
+    #[tokio::test]
+    async fn test_read_only_mode_blocks_abandon() {
+        let mock = MockGerritRepository::default();
+        let server = GerritServer::new(mock).with_read_only(true);
+
+        let params = AbandonChangeParams {
+            change_id: "12345".into(),
+            message: None,
+            gerrit_base_url: "https://g.example.com".to_string(),
+        };
+        let result = server.abandon_change(Parameters(params)).await;
+        assert!(result.is_error.unwrap_or(false));
+        let text = extract_text(result);
+        assert!(
+            text.contains("read-only"),
+            "expected read-only error for abandon, got: {text}"
+        );
     }
 }

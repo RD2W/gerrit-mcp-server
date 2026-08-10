@@ -52,6 +52,7 @@ Credentials are never stored in the config file — only the env var names.
 | Field | Default | Description |
 |---|---|---|
 | `default_max_results` | `25` | Default result limit when client doesn't specify |
+| `read_only` | `false` | Disable all write operations (env: `READ_ONLY_MODE`) |
 
 ### `[cache]` — in-memory cache
 
@@ -170,6 +171,30 @@ allowed_hosts = ["localhost", "127.0.0.1", "gerrit-mcp", "gerrit-mcp:8080"]
 # Public deployment behind a reverse proxy
 allowed_hosts = ["localhost", "mcp.example.com"]
 ```
+
+---
+
+## Read-only mode
+
+When enabled, the server blocks all write operations — creates, updates,
+deletes, submissions, cherry-picks, and other modifying actions. Read tools
+remain fully available.
+
+```toml
+[service]
+read_only = true
+```
+
+Or via environment variable:
+
+```bash
+READ_ONLY_MODE=true
+```
+
+Blocked tools return an error message: `"Cannot create change in read-only mode."`
+
+Use this for CI pipelines, audit environments, or any scenario where an LLM
+should only be permitted to read Gerrit data.
 
 ---
 

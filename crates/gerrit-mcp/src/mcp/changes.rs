@@ -327,6 +327,9 @@ pub async fn create_change<R: GerritRepository + Send + Sync + 'static>(
     server: &GerritServer<R>,
     params: CreateChangeParams,
 ) -> CallToolResult {
+    if let Some(r) = server.check_not_readonly("create change") {
+        return r;
+    }
     let payload = CreateChangeRequest {
         project: params.project,
         branch: params.branch,
@@ -351,6 +354,9 @@ pub async fn set_ready_for_review<R: GerritRepository + Send + Sync + 'static>(
     server: &GerritServer<R>,
     params: SetReadyParams,
 ) -> CallToolResult {
+    if let Some(r) = server.check_not_readonly("set ready for review") {
+        return r;
+    }
     match server.repo.set_ready(&params.change_id).await {
         Ok(()) => server.text(format!(
             "Change {} marked as ready for review.",
@@ -364,6 +370,9 @@ pub async fn set_work_in_progress<R: GerritRepository + Send + Sync + 'static>(
     server: &GerritServer<R>,
     params: SetWipParams,
 ) -> CallToolResult {
+    if let Some(r) = server.check_not_readonly("set work-in-progress") {
+        return r;
+    }
     let payload = WipRequest {
         message: params.message,
     };
@@ -380,6 +389,9 @@ pub async fn set_topic<R: GerritRepository + Send + Sync + 'static>(
     server: &GerritServer<R>,
     params: SetTopicParams,
 ) -> CallToolResult {
+    if let Some(r) = server.check_not_readonly("set topic") {
+        return r;
+    }
     let payload = TopicRequest {
         topic: params.topic.clone(),
     };
@@ -394,6 +406,9 @@ pub async fn abandon_change<R: GerritRepository + Send + Sync + 'static>(
     server: &GerritServer<R>,
     params: AbandonChangeParams,
 ) -> CallToolResult {
+    if let Some(r) = server.check_not_readonly("abandon change") {
+        return r;
+    }
     let payload = AbandonRequest {
         message: params.message,
         notify: None,
@@ -415,6 +430,9 @@ pub async fn revert_change<R: GerritRepository + Send + Sync + 'static>(
     server: &GerritServer<R>,
     params: RevertChangeParams,
 ) -> CallToolResult {
+    if let Some(r) = server.check_not_readonly("revert change") {
+        return r;
+    }
     match server
         .repo
         .revert_change(&params.change_id, params.message.as_deref())
@@ -432,6 +450,9 @@ pub async fn revert_submission<R: GerritRepository + Send + Sync + 'static>(
     server: &GerritServer<R>,
     params: RevertSubmissionParams,
 ) -> CallToolResult {
+    if let Some(r) = server.check_not_readonly("revert submission") {
+        return r;
+    }
     match server
         .repo
         .revert_submission(&params.change_id, params.message.as_deref())
@@ -456,6 +477,9 @@ pub async fn submit_change<R: GerritRepository + Send + Sync + 'static>(
     server: &GerritServer<R>,
     params: SubmitChangeParams,
 ) -> CallToolResult {
+    if let Some(r) = server.check_not_readonly("submit change") {
+        return r;
+    }
     let payload = SubmitRequest {
         wait_for_merge: params.wait_for_merge,
         on_behalf_of: None,

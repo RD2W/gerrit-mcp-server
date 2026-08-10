@@ -134,6 +134,9 @@ pub async fn add_reviewer<R: GerritRepository + Send + Sync + 'static>(
     server: &GerritServer<R>,
     params: AddReviewerParams,
 ) -> CallToolResult {
+    if let Some(r) = server.check_not_readonly("add reviewer") {
+        return r;
+    }
     let state = params.state.as_deref().unwrap_or(REVIEWER_STATE_REVIEWER);
     if state != REVIEWER_STATE_REVIEWER && state != "CC" {
         return server.error(format!("Invalid state '{}': must be REVIEWER or CC", state));
@@ -165,6 +168,9 @@ pub async fn cherry_pick_change<R: GerritRepository + Send + Sync + 'static>(
     server: &GerritServer<R>,
     params: CherryPickChangeParams,
 ) -> CallToolResult {
+    if let Some(r) = server.check_not_readonly("cherry-pick change") {
+        return r;
+    }
     let revision = params.revision_id.as_deref().unwrap_or(DEFAULT_REVISION);
     let payload = CherryPickRequest {
         message: params.message,
@@ -190,6 +196,9 @@ pub async fn cherry_pick_chain<R: GerritRepository + Send + Sync + 'static>(
     server: &GerritServer<R>,
     params: CherryPickChainParams,
 ) -> CallToolResult {
+    if let Some(r) = server.check_not_readonly("cherry-pick chain") {
+        return r;
+    }
     let revision = params.revision_id.as_deref().unwrap_or(DEFAULT_REVISION);
 
     let related = match server.repo.get_related(&params.change_id, revision).await {

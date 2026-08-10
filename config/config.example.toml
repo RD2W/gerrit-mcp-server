@@ -93,6 +93,11 @@ mode = "none"
 # Environment: MCP_DEFAULT_MAX_RESULTS (parsed as u32)
 default_max_results = 25
 
+# Disable all write operations when true (create, update, delete).
+# All read tools remain available.
+# Environment: READ_ONLY_MODE (true/1/yes or false/0/no; unknown values silently ignored)
+read_only = false
+
 # ---------------------------------------------------------------------------
 # In-memory cache for Gerrit API responses
 # ---------------------------------------------------------------------------

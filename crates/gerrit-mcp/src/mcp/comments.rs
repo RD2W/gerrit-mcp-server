@@ -101,6 +101,9 @@ pub async fn post_review_comment<R: GerritRepository + Send + Sync + 'static>(
     server: &GerritServer<R>,
     params: PostReviewCommentParams,
 ) -> CallToolResult {
+    if let Some(r) = server.check_not_readonly("post review comment") {
+        return r;
+    }
     let comment = CommentInput {
         id: None,
         path: Some(params.file_path.clone()),
@@ -131,6 +134,9 @@ pub async fn post_draft_comment<R: GerritRepository + Send + Sync + 'static>(
     server: &GerritServer<R>,
     params: PostDraftCommentParams,
 ) -> CallToolResult {
+    if let Some(r) = server.check_not_readonly("post draft comment") {
+        return r;
+    }
     let mut message = params.message.clone();
     let suggestion = if message.starts_with("suggestion:") {
         let s = message
@@ -180,6 +186,9 @@ pub async fn delete_draft_comment<R: GerritRepository + Send + Sync + 'static>(
     server: &GerritServer<R>,
     params: DeleteDraftCommentParams,
 ) -> CallToolResult {
+    if let Some(r) = server.check_not_readonly("delete draft comment") {
+        return r;
+    }
     match server
         .repo
         .delete_draft(&params.change_id, &params.draft_id)
@@ -194,6 +203,9 @@ pub async fn delete_draft_comments<R: GerritRepository + Send + Sync + 'static>(
     server: &GerritServer<R>,
     params: DeleteDraftCommentsParams,
 ) -> CallToolResult {
+    if let Some(r) = server.check_not_readonly("delete draft comments") {
+        return r;
+    }
     let drafts = match server.repo.list_drafts(&params.change_id).await {
         Ok(d) => d,
         Err(e) => return server.error(format!("Failed to list drafts: {e}")),
@@ -232,6 +244,9 @@ pub async fn publish_drafts<R: GerritRepository + Send + Sync + 'static>(
     server: &GerritServer<R>,
     params: PublishDraftsParams,
 ) -> CallToolResult {
+    if let Some(r) = server.check_not_readonly("publish drafts") {
+        return r;
+    }
     let payload = PublishDraftsRequest { notify: None };
     match server
         .repo

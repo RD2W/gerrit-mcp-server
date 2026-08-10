@@ -142,6 +142,7 @@ impl Config {
         {
             self.service.default_max_results = v;
         }
+        apply_bool_env("READ_ONLY_MODE", &mut self.service.read_only);
 
         // --- cache ---
         apply_bool_env("MCP_CACHE_ENABLED", &mut self.cache.enabled);
@@ -305,12 +306,15 @@ impl Default for AuthConfig {
 pub struct ServiceConfig {
     /// Default maximum number of results returned by queries.
     pub default_max_results: u32,
+    /// Disable all write operations (create, update, delete).
+    pub read_only: bool,
 }
 
 impl Default for ServiceConfig {
     fn default() -> Self {
         Self {
             default_max_results: 25,
+            read_only: false,
         }
     }
 }
@@ -906,5 +910,6 @@ unknown_field = 42
     fn service_defaults() {
         let config = ServiceConfig::default();
         assert_eq!(config.default_max_results, 25);
+        assert!(!config.read_only);
     }
 }
