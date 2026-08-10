@@ -4,6 +4,7 @@
 use std::collections::BTreeMap;
 use std::time::Duration;
 
+use gerrit_core::application::GerritService;
 use gerrit_core::domain::*;
 use gerrit_core::infrastructure::auth::AuthMode;
 use gerrit_core::infrastructure::client::{GerritClient, GerritClientConfig};
@@ -32,24 +33,6 @@ fn extract_text(result: rmcp::model::CallToolResult) -> String {
             _ => None,
         })
         .unwrap_or_default()
-}
-
-fn make_change(number: u64, subject: &str) -> Change {
-    Change {
-        id: format!("project~branch~{}", number),
-        _number: number,
-        subject: subject.to_string(),
-        status: "NEW".to_string(),
-        project: "project".to_string(),
-        branch: "main".to_string(),
-        owner: AccountInfo {
-            _account_id: 1000,
-            name: Some("Author".into()),
-            email: Some("author@example.com".into()),
-        },
-        updated: "2025-01-01 00:00:00".into(),
-        work_in_progress: false,
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -338,6 +321,67 @@ async fn test_client_list_files_parsing() {
     assert_eq!(files["src/lib.rs"].lines_inserted, 50);
 }
 
+#[tokio::test]
+async fn test_multi_instance_query_changes() {
+    let server_a = MockServer::start().await;
+    let server_b = MockServer::start().await;
+
+    let change_a = r#"{"id":"a~1","_number":100,"subject":"From A","status":"NEW","project":"p","branch":"b","owner":{"_account_id":1},"updated":"2025-01-01 00:00:00"}"#;
+    let change_b = r#"{"id":"b~2","_number":200,"subject":"From B","status":"NEW","project":"p","branch":"b","owner":{"_account_id":1},"updated":"2025-01-01 00:00:00"}"#;
+
+    Mock::given(method("GET"))
+        .and(path("/changes/"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(format!("[{change_a}]")))
+        .mount(&server_a)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path("/changes/"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(format!("[{change_b}]")))
+        .mount(&server_b)
+        .await;
+
+    let default_client = GerritClient::new(GerritClientConfig {
+        base_url: server_a.uri(),
+        auth: AuthMode::Bearer("token".into()),
+        timeout: Duration::from_secs(5),
+        tls: test_tls_config(),
+        disable_url_normalization: true,
+    })
+    .unwrap();
+
+    let factory_config = GerritClientConfig {
+        base_url: String::new(),
+        auth: AuthMode::Bearer("token".into()),
+        timeout: Duration::from_secs(5),
+        tls: test_tls_config(),
+        disable_url_normalization: true,
+    };
+
+    let service = GerritService::new(default_client);
+    let server = GerritServer::new(service).with_client_factory(factory_config);
+
+    let params_a = QueryChangesParams {
+        query: "status:open".into(),
+        gerrit_base_url: Some(server_a.uri()),
+        limit: None,
+        options: None,
+    };
+    let result = server.query_changes(Parameters(params_a)).await;
+    let text = extract_text(result);
+    assert!(text.contains("From A"), "expected 'From A' in {text}");
+
+    let params_b = QueryChangesParams {
+        query: "status:open".into(),
+        gerrit_base_url: Some(server_b.uri()),
+        limit: None,
+        options: None,
+    };
+    let result = server.query_changes(Parameters(params_b)).await;
+    let text = extract_text(result);
+    assert!(text.contains("From B"), "expected 'From B' in {text}");
+}
+
 // ---------------------------------------------------------------------------
 // GerritServer full pipeline tests (MockGerritRepository)
 // ---------------------------------------------------------------------------
@@ -346,8 +390,8 @@ async fn test_client_list_files_parsing() {
 async fn test_query_changes_full_pipeline() {
     let mock = MockGerritRepository::default();
     mock.push_query_changes_result(Ok(vec![
-        make_change(100, "First change"),
-        make_change(200, "Second change"),
+        MockGerritRepository::make_change(100, "First change"),
+        MockGerritRepository::make_change(200, "Second change"),
     ]));
     let server = GerritServer::new(mock);
 
@@ -434,6 +478,7 @@ async fn test_get_change_detail_pipeline() {
         labels: BTreeMap::new(),
         reviewers: None,
         messages: vec![],
+        topic: None,
     }));
     let server = GerritServer::new(mock);
 
@@ -454,12 +499,23 @@ async fn test_get_change_detail_pipeline() {
 #[tokio::test]
 async fn test_get_commit_message_pipeline() {
     let mock = MockGerritRepository::default();
-    let mut footers = BTreeMap::new();
-    footers.insert("Change-Id".into(), "Iabc123".into());
     mock.push_get_commit_message_result(Ok(CommitMessage {
         subject: "Fix stuff".into(),
-        full_message: "Fix stuff\n\nDetails here".into(),
-        footers,
+        message: "Fix stuff\n\nDetails here\n\nChange-Id: Iabc123".into(),
+        commit: "abcd1234efgh5678".into(),
+        author: GitPersonInfo {
+            name: "Dev".into(),
+            email: "dev@example.com".into(),
+            date: "2026-01-01 00:00:00.000000000".into(),
+            tz: 60,
+        },
+        committer: GitPersonInfo {
+            name: "CI".into(),
+            email: "ci@example.com".into(),
+            date: "2026-01-01 00:00:00.000000000".into(),
+            tz: 60,
+        },
+        parents: vec![],
     }));
     let server = GerritServer::new(mock);
 
@@ -470,10 +526,11 @@ async fn test_get_commit_message_pipeline() {
     let result = server.get_commit_message(Parameters(params)).await;
     let text = extract_text(result);
 
+    assert!(text.contains("Commit: abcd1234efgh5678"));
     assert!(text.contains("Subject: Fix stuff"));
     assert!(text.contains("Details here"));
-    assert!(text.contains("Change-Id"));
-    assert!(text.contains("Iabc123"));
+    assert!(text.contains("Author: Dev <dev@example.com>"));
+    assert!(text.contains("Committer: CI <ci@example.com>"));
 }
 
 #[tokio::test]
@@ -686,7 +743,7 @@ async fn test_add_reviewer_error() {
 #[tokio::test]
 async fn test_create_change_pipeline() {
     let mock = MockGerritRepository::default();
-    mock.push_create_change_result(Ok(make_change(500, "New feature")));
+    mock.push_create_change_result(Ok(MockGerritRepository::make_change(500, "New feature")));
     let server = GerritServer::new(mock);
 
     let params = CreateChangeParams {
@@ -708,7 +765,10 @@ async fn test_create_change_pipeline() {
 #[tokio::test]
 async fn test_abandon_change_pipeline() {
     let mock = MockGerritRepository::default();
-    mock.push_abandon_change_result(Ok(make_change(600, "Abandoned feature")));
+    mock.push_abandon_change_result(Ok(MockGerritRepository::make_change(
+        600,
+        "Abandoned feature",
+    )));
     let server = GerritServer::new(mock);
 
     let params = AbandonChangeParams {
@@ -726,7 +786,10 @@ async fn test_abandon_change_pipeline() {
 #[tokio::test]
 async fn test_revert_change_pipeline() {
     let mock = MockGerritRepository::default();
-    mock.push_revert_change_result(Ok(make_change(700, "Revert \"bad change\"")));
+    mock.push_revert_change_result(Ok(MockGerritRepository::make_change(
+        700,
+        "Revert \"bad change\"",
+    )));
     let server = GerritServer::new(mock);
 
     let params = RevertChangeParams {
@@ -745,8 +808,8 @@ async fn test_revert_change_pipeline() {
 async fn test_revert_submission_pipeline() {
     let mock = MockGerritRepository::default();
     mock.push_revert_submission_result(Ok(vec![
-        make_change(800, "Revert 1"),
-        make_change(801, "Revert 2"),
+        MockGerritRepository::make_change(800, "Revert 1"),
+        MockGerritRepository::make_change(801, "Revert 2"),
     ]));
     let server = GerritServer::new(mock);
 
@@ -817,7 +880,10 @@ async fn test_submit_change_pipeline() {
 async fn test_changes_submitted_together_pipeline() {
     let mock = MockGerritRepository::default();
     mock.push_changes_submitted_together_result(Ok(SubmittedTogether {
-        changes: vec![make_change(10, "Related 1"), make_change(11, "Related 2")],
+        changes: vec![
+            MockGerritRepository::make_change(10, "Related 1"),
+            MockGerritRepository::make_change(11, "Related 2"),
+        ],
         non_visible_changes: 3,
     }));
     let server = GerritServer::new(mock);
@@ -1071,6 +1137,7 @@ async fn test_cherry_pick_chain_pipeline() {
         labels: BTreeMap::new(),
         reviewers: None,
         messages: vec![],
+        topic: None,
     }));
     mock.push_cherry_pick_result(Ok(CherryPickResult {
         id: "new~101".into(),
@@ -1096,6 +1163,7 @@ async fn test_cherry_pick_chain_pipeline() {
         labels: BTreeMap::new(),
         reviewers: None,
         messages: vec![],
+        topic: None,
     }));
 
     let server = GerritServer::new(mock);
@@ -1163,6 +1231,7 @@ async fn test_cherry_pick_chain_partial_failure() {
         labels: BTreeMap::new(),
         reviewers: None,
         messages: vec![],
+        topic: None,
     }));
     mock.push_cherry_pick_result(Ok(CherryPickResult {
         id: "new~200".into(),

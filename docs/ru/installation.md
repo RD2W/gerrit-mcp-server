@@ -39,17 +39,22 @@ cp config/config.example.toml config/config.toml
 base_url = "https://your-gerrit.example.com"
 
 [gerrit.auth]
-mode = "token"   # или "basic" / "none"
+mode = "bearer"   # или "http_basic" / "git_cookies" / "none"
 token_env = "GERRIT_TOKEN"
 ```
 
 Учётные данные задаются через переменные окружения:
 
 ```bash
+# Аутентификация по Bearer-токену:
 export GERRIT_TOKEN="ваш-токен"
-# или для Basic auth:
+
+# HTTP Basic аутентификация:
 export GERRIT_USERNAME="пользователь"
-export GERRIT_PASSWORD="пароль"
+export GERRIT_AUTH_TOKEN="ваш-http-пароль"
+
+# Git cookies аутентификация — только в конфиге:
+# Укажите gitcookies_path в config.toml
 ```
 
 ### Запуск
@@ -85,7 +90,7 @@ docker compose up -d
 docker pull rd2w/gerrit-mcp:latest
 
 # Или конкретной версии
-docker pull rd2w/gerrit-mcp:v0.1.0
+docker pull rd2w/gerrit-mcp:v1.1.1
 
 # Используйте docker-compose файл для готовых образов
 docker compose -f docker-compose.hub.yml up -d
@@ -107,7 +112,7 @@ docker compose -f docker-compose.hub.yml up -d
 #    (загрузка базовых образов, crates Rust, компиляция — всё вкомпилировано)
 docker build -t gerrit-mcp:latest .
 
-# 2. Экспорт в один переносимый архив (~35 МБ)
+# 2. Экспорт в один переносимый архив (~23 МБ)
 docker save gerrit-mcp:latest | gzip > gerrit-mcp.tar.gz
 
 # 3. Перенос на изолированный хост (USB-накопитель, scp на jump host и т.д.)

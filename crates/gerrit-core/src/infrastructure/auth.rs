@@ -10,11 +10,27 @@ use std::path::{Path, PathBuf};
 use crate::domain::DomainError;
 
 /// Supported authentication methods for Gerrit.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum AuthMode {
     HttpBasic { username: String, password: String },
     GitCookies { gitcookies_path: PathBuf },
     Bearer(String),
+}
+
+impl std::fmt::Debug for AuthMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::HttpBasic { username, .. } => f
+                .debug_struct("HttpBasic")
+                .field("username", username)
+                .field("password", &"[redacted]")
+                .finish(),
+            Self::Bearer(_) => f.write_str("Bearer([redacted])"),
+            Self::GitCookies { gitcookies_path } => {
+                f.debug_tuple("GitCookies").field(gitcookies_path).finish()
+            }
+        }
+    }
 }
 
 /// A host specification used to match a Gerrit URL against an auth mode.

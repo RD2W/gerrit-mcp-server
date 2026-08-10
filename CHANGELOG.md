@@ -6,6 +6,44 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-08-10
+
+### Added
+
+- **Read-only mode** (`READ_ONLY_MODE` env / `service.read_only` config) — disables
+  all 16 write tools while keeping 12 read tools operational. Useful for CI pipelines,
+  audit environments, or LLM agents that should only read Gerrit data.
+- **Environment variable overrides for all configuration fields** — every setting in
+  `config.toml` now has a corresponding env var (`GERRIT_URL`, `MCP_CACHE_ENABLED`,
+  `MCP_RATE_LIMIT_RPS`, etc.). Sensitive credentials loaded indirectly via env var
+  indirection (config specifies the env var name, code reads the value).
+- **MCP endpoint Bearer token authentication** — `mcp_auth_token` config field +
+  `MCP_AUTH_TOKEN` env var. When set, HTTP clients must include
+  `Authorization: Bearer <token>`. Constant-time comparison prevents timing attacks.
+
+### Changed
+
+- **Refactored codebase**: split monolithic modules into focused files, wired
+  Prometheus metrics (`tool_calls_total`, `tool_errors_total`, `queries_total`),
+  switched cache from `DashMap`-based to `LRU` with TTL.
+- **Unpinned reqwest version constraint** — allows semver-compatible updates
+  without manual `Cargo.toml` changes.
+- **Config and CI docs updated** for the env var override system.
+
+### Fixed
+
+- **`get_commit_message` endpoint** corrected — was hitting a wrong Gerrit API path.
+- **`get_file_diff` handler** now respects the `gerrit_base_url` parameter
+  (previously ignored, always routing through the default service).
+- **`build_options_query`** and **`get_commit_message`** Gerrit API calls fixed
+  for correct URL construction.
+- **Topic and reviewer fields** now properly populated in change and detail models.
+- **Multi-instance support**: per-URL Gerrit client cache for on-demand connections.
+- **Default bind address** set to `127.0.0.1` (was `0.0.0.0`) for security.
+- **`AuthMode` Debug output** no longer leaks secrets.
+- **CI**: UPX binary compression for `aarch64` release binaries.
+- **CI**: Dependabot target branch set to `dev`.
+
 ## [1.1.1] — 2026-08-09
 
 ### Changed

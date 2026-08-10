@@ -22,6 +22,7 @@ use gerrit_core::infrastructure::tls::TlsConfig;
 use tracing_subscriber::EnvFilter;
 
 use crate::config::Config;
+use crate::mcp::GerritServer;
 use crate::transport::run_transport;
 
 /// Custom version string with full build metadata.
@@ -79,7 +80,7 @@ async fn main() -> anyhow::Result<()> {
         disable_url_normalization: false,
     };
 
-    let client = GerritClient::new(client_config)?;
+    let client = GerritClient::new(client_config.clone())?;
 
     let mut service = GerritService::new(client);
 
@@ -97,7 +98,11 @@ async fn main() -> anyhow::Result<()> {
         );
     }
 
-    run_transport(&config, service).await?;
+    let server = GerritServer::new(service)
+        .with_client_factory(client_config)
+        .with_read_only(config.service.read_only);
+
+    run_transport(&config, server).await?;
 
     Ok(())
 }

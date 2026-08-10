@@ -39,17 +39,22 @@ Edit `config/config.toml` — at minimum, set:
 base_url = "https://your-gerrit.example.com"
 
 [gerrit.auth]
-mode = "token"   # or "basic" / "none"
+mode = "bearer"   # or "http_basic" / "git_cookies" / "none"
 token_env = "GERRIT_TOKEN"
 ```
 
 Set credentials via environment variables:
 
 ```bash
+# Bearer token auth:
 export GERRIT_TOKEN="your-token-here"
-# or for Basic auth:
+
+# HTTP Basic auth:
 export GERRIT_USERNAME="user"
-export GERRIT_PASSWORD="pass"
+export GERRIT_AUTH_TOKEN="your-http-password"
+
+# Git cookies auth — config only:
+# Set gitcookies_path in config.toml
 ```
 
 ### Run
@@ -85,7 +90,7 @@ tagged release.
 docker pull rd2w/gerrit-mcp:latest
 
 # Or a specific version
-docker pull rd2w/gerrit-mcp:v0.1.0
+docker pull rd2w/gerrit-mcp:v1.1.1
 
 # Use the docker-compose file for pre-built images
 docker compose -f docker-compose.hub.yml up -d
@@ -107,7 +112,7 @@ access is required at runtime.
 #    (pulls base images, fetches Rust crates, compiles — all baked in)
 docker build -t gerrit-mcp:latest .
 
-# 2. Export as a single portable archive (~35 MB)
+# 2. Export as a single portable archive (~23 MB)
 docker save gerrit-mcp:latest | gzip > gerrit-mcp.tar.gz
 
 # 3. Transfer to the air-gapped host (USB drive, scp to jump host, etc.)

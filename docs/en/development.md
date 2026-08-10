@@ -25,8 +25,8 @@ git checkout -b feat/my-feature
 ## Running tests
 
 ```bash
-# All tests
-cargo test --workspace
+# All tests (276+). Use --test-threads=1 to avoid env var race conditions
+cargo test --workspace -- --test-threads=1
 
 # Specific crate
 cargo test -p gerrit-core
@@ -89,17 +89,23 @@ See any existing source file for the exact format.
 1. **Add the domain type** in `gerrit-core/src/domain.rs` if the API returns
    a new response shape.
 
-2. **Add the client method** in `gerrit-core/src/infrastructure/client.rs` —
-   implement the HTTP call to the Gerrit REST API endpoint.
+2. **Add the trait method** to `GerritRepository` in `domain.rs` and implement
+   it in `infrastructure/client.rs`.
 
-3. **Add the application method** in `gerrit-core/src/application.rs` —
-   wire up caching, rate limiting, and formatting.
+3. **Wire through the decorator** in `application.rs` — `GerritService` delegates
+   to the inner repository.
 
-4. **Define the tool schema** in `gerrit-mcp/src/mcp/tools.rs`:
+4. **Define the tool parameter type** in `gerrit-mcp/src/mcp/tools.rs` with
+   `schemars` derives for JSON Schema generation.
+
+5. **Implement the tool handler** in the appropriate `mcp/` module
+   (`changes.rs`, `reviews.rs`, or `comments.rs`):
    ```rust
-    #[tool(description = "Get a single change by ID")]
-    async fn get_change_details(
+   #[tool(description = "Get a single change by ID")]
+   async fn get_change_details(
+       &self,
        change_id: String,
+       ...
    ) -> Result<CallToolResult, McpError> {
        // …
    }
@@ -107,11 +113,11 @@ See any existing source file for the exact format.
    Use `#[param(description = "...")]` for every parameter — these descriptions
    are exposed to LLM clients and directly affect tool call quality.
 
-5. **Register the handler** in `gerrit-mcp/src/mcp/mod.rs` — add the tool
-   to the server's tool list and map it to the application method.
+6. **Register the handler** in `gerrit-mcp/src/mcp/mod.rs` — the tool is
+   automatically discovered via the `#[tool]` macro.
 
-6. **Add tests** — unit tests for the domain type, integration tests for the
-   HTTP client (mock the Gerrit response), and handler tests for the MCP layer.
+7. **Add tests** — unit tests for the domain type, mock tests for the handler,
+   and integration tests for the HTTP client.
 
 ---
 
@@ -122,7 +128,7 @@ When behaviour changes, update:
 - The relevant `docs/en/` and `docs/ru/` pages (keep them in sync)
 - `README.md` if it affects the quick start or feature list
 - `CHANGELOG.md` — add an entry under `[Unreleased]`
-- `config/config.example.toml` — if configuration options change
+- `config/config.example.toml` and `config/.env.example` — if configuration options change
 
 ---
 
@@ -146,13 +152,13 @@ compilation issues that tests might miss.
 
 Releases are automated via `.github/workflows/release.yml`:
 
-1. Push a tag like `v0.1.0`
+1. Push a tag like `v1.1.1`
 2. CI builds multi-arch Docker images and creates a GitHub Release
 3. Binary artifacts are attached to the release
 
 Manual release steps (for debugging the workflow):
 
 ```bash
-docker build -t gerrit-mcp:v0.1.0 .
-docker tag gerrit-mcp:v0.1.0 gerrit-mcp:latest
+docker build -t gerrit-mcp:v1.1.1 .
+docker tag gerrit-mcp:v1.1.1 gerrit-mcp:latest
 ```

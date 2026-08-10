@@ -96,8 +96,15 @@ impl Config {
     }
 
     fn apply_env_overrides(&mut self) {
+        // --- gerrit ---
         if let Ok(val) = std::env::var("GERRIT_URL") {
             self.gerrit.base_url = val;
+        }
+
+        if let Ok(val) = std::env::var("GERRIT_TIMEOUT_SECS")
+            && let Ok(v) = val.parse::<u64>()
+        {
+            self.gerrit.timeout_secs = v;
         }
 
         if let Ok(val) = std::env::var("GERRIT_CA_CERT") {
@@ -109,12 +116,10 @@ impl Config {
         if let Ok(val) = std::env::var("SSL_CERT_DIR") {
             self.gerrit.ca_cert_dir = Some(val);
         }
-        if let Ok(val) = std::env::var("GERRIT_VERIFY_SSL")
-            && (val.eq_ignore_ascii_case("false") || val == "0")
-        {
-            self.gerrit.verify_ssl = false;
-        }
 
+        apply_bool_env("GERRIT_VERIFY_SSL", &mut self.gerrit.verify_ssl);
+
+        // --- gerrit.auth ---
         if let Some(ref username_env) = self.gerrit.auth.username_env.clone()
             && let Ok(username) = std::env::var(username_env)
         {
@@ -131,7 +136,75 @@ impl Config {
             self.gerrit.auth.bearer_token = Some(bearer_token);
         }
 
+        // --- service ---
+        if let Ok(val) = std::env::var("MCP_DEFAULT_MAX_RESULTS")
+            && let Ok(v) = val.parse::<u32>()
+        {
+            self.service.default_max_results = v;
+        }
+        apply_bool_env("READ_ONLY_MODE", &mut self.service.read_only);
+
+        // --- cache ---
+        apply_bool_env("MCP_CACHE_ENABLED", &mut self.cache.enabled);
+        if let Ok(val) = std::env::var("MCP_CACHE_TTL_SECS")
+            && let Ok(v) = val.parse::<u64>()
+        {
+            self.cache.ttl_secs = v;
+        }
+        if let Ok(val) = std::env::var("MCP_CACHE_MAX_ENTRIES")
+            && let Ok(v) = val.parse::<usize>()
+        {
+            self.cache.max_entries = v;
+        }
+
+        // --- rate_limit ---
+        apply_bool_env("MCP_RATE_LIMIT_ENABLED", &mut self.rate_limit.enabled);
+        if let Ok(val) = std::env::var("MCP_RATE_LIMIT_RPS")
+            && let Ok(v) = val.parse::<u32>()
+        {
+            self.rate_limit.requests_per_second = v;
+        }
+        if let Ok(val) = std::env::var("MCP_RATE_LIMIT_BURST")
+            && let Ok(v) = val.parse::<u32>()
+        {
+            self.rate_limit.burst = v;
+        }
+
+        // --- transport ---
+        if let Ok(val) = std::env::var("MCP_TRANSPORT") {
+            self.transport.mode = val;
+        }
+        if let Ok(val) = std::env::var("MCP_BIND_ADDR") {
+            self.transport.bind_addr = val;
+        }
+        if let Ok(val) = std::env::var("MCP_HTTP_PATH") {
+            self.transport.http_path = val;
+        }
+        if let Ok(val) = std::env::var("MCP_HEALTH_PATH") {
+            self.transport.health_path = val;
+        }
+        if let Ok(val) = std::env::var("MCP_READY_PATH") {
+            self.transport.ready_path = val;
+        }
+        if let Ok(val) = std::env::var("MCP_METRICS_PATH") {
+            self.transport.metrics_path = val;
+        }
+        if let Ok(val) = std::env::var("MCP_ALLOWED_HOSTS") {
+            self.transport.allowed_hosts = val
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+        }
+        if let Ok(val) = std::env::var("MCP_AUTH_TOKEN") {
+            self.transport.mcp_auth_token = val;
+        }
+
+        // --- log ---
         if let Ok(val) = std::env::var("RUST_LOG") {
+            self.log.level = val;
+        }
+        if let Ok(val) = std::env::var("MCP_LOG_LEVEL") {
             self.log.level = val;
         }
     }
@@ -233,12 +306,15 @@ impl Default for AuthConfig {
 pub struct ServiceConfig {
     /// Default maximum number of results returned by queries.
     pub default_max_results: u32,
+    /// Disable all write operations (create, update, delete).
+    pub read_only: bool,
 }
 
 impl Default for ServiceConfig {
     fn default() -> Self {
         Self {
             default_max_results: 25,
+            read_only: false,
         }
     }
 }
@@ -309,18 +385,24 @@ pub struct TransportConfig {
     /// Allowed hostnames for Streamable HTTP Host header validation.
     #[serde(default)]
     pub allowed_hosts: Vec<String>,
+    /// Bearer token for MCP endpoint authentication. When set, clients
+    /// must include `Authorization: Bearer <token>` in requests.
+    /// Token auth is disabled when this is empty.
+    #[serde(default)]
+    pub mcp_auth_token: String,
 }
 
 impl Default for TransportConfig {
     fn default() -> Self {
         Self {
             mode: "both".into(),
-            bind_addr: "0.0.0.0:8080".into(),
+            bind_addr: "127.0.0.1:8080".into(),
             http_path: "/mcp".into(),
             health_path: "/healthz".into(),
             ready_path: "/readyz".into(),
             metrics_path: "/metrics".into(),
             allowed_hosts: vec![],
+            mcp_auth_token: String::new(),
         }
     }
 }
@@ -339,6 +421,24 @@ impl Default for LogConfig {
     fn default() -> Self {
         Self {
             level: "info".into(),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/// Applies an env var to a boolean field.
+///
+/// Accepts `true` / `1` / `yes` (case-insensitive) for true and
+/// `false` / `0` / `no` for false. Unknown values are ignored.
+fn apply_bool_env(var: &str, target: &mut bool) {
+    if let Ok(val) = std::env::var(var) {
+        match val.to_ascii_lowercase().as_str() {
+            "true" | "1" | "yes" => *target = true,
+            "false" | "0" | "no" => *target = false,
+            _ => {} // unknown value — keep default
         }
     }
 }
@@ -365,6 +465,34 @@ pub enum ConfigError {
 mod tests {
     use super::*;
 
+    // --- helpers ---
+
+    /// Helper that sets an env var for the duration of the closure.
+    fn with_env<R>(k: &str, v: &str, f: impl FnOnce() -> R) -> R {
+        // SAFETY: tests run single-threaded, no other thread accesses env vars
+        unsafe { std::env::set_var(k, v) };
+        let result = f();
+        // SAFETY: cleanup after test, no concurrent access
+        unsafe { std::env::remove_var(k) };
+        result
+    }
+
+    /// Like `with_env` but also temporarily clears `SSL_CERT_FILE` and
+    /// `SSL_CERT_DIR` to avoid interference from system environment.
+    fn with_clean_tls_env<R>(k: &str, v: &str, f: impl FnOnce() -> R) -> R {
+        // SAFETY: tests run single-threaded
+        unsafe { std::env::remove_var("SSL_CERT_FILE") };
+        unsafe { std::env::remove_var("SSL_CERT_DIR") };
+        // SAFETY: single-threaded
+        unsafe { std::env::set_var(k, v) };
+        let result = f();
+        // SAFETY: cleanup
+        unsafe { std::env::remove_var(k) };
+        result
+    }
+
+    // --- validation ---
+
     #[test]
     fn default_config_fails_validation() {
         let config = Config::default();
@@ -384,6 +512,8 @@ mod tests {
         let result = config.validate();
         assert!(result.is_ok());
     }
+
+    // --- TOML parsing ---
 
     #[test]
     fn parses_valid_toml() {
@@ -417,34 +547,347 @@ unknown_field = 42
         assert!(result.is_err());
     }
 
+    // --- env overrides: gerrit ---
+
     #[test]
-    fn env_override_base_url() {
-        let mut config = Config::default();
-        config.gerrit.base_url = "https://from-env.example.com".into();
-        assert_eq!(config.gerrit.base_url, "https://from-env.example.com");
+    fn env_override_gerrit_url() {
+        with_env("GERRIT_URL", "https://gerrit-env.example.com", || {
+            let mut config = Config::default();
+            config.apply_env_overrides();
+            assert_eq!(config.gerrit.base_url, "https://gerrit-env.example.com");
+        });
+    }
+
+    #[test]
+    fn env_override_gerrit_timeout_secs() {
+        with_env("GERRIT_TIMEOUT_SECS", "60", || {
+            let mut config = Config::default();
+            config.apply_env_overrides();
+            assert_eq!(config.gerrit.timeout_secs, 60);
+        });
+    }
+
+    #[test]
+    fn env_override_gerrit_timeout_ignores_invalid() {
+        with_env("GERRIT_TIMEOUT_SECS", "not_a_number", || {
+            let mut config = Config::default();
+            config.apply_env_overrides();
+            assert_eq!(config.gerrit.timeout_secs, 30); // default preserved
+        });
+    }
+
+    #[test]
+    fn env_override_gerrit_ca_cert() {
+        with_clean_tls_env("GERRIT_CA_CERT", "/custom/ca.pem", || {
+            let mut config = Config::default();
+            config.apply_env_overrides();
+            assert_eq!(config.gerrit.ca_cert.as_deref(), Some("/custom/ca.pem"));
+        });
+    }
+
+    #[test]
+    fn env_override_ssl_cert_file_falls_back_to_ca_cert() {
+        with_clean_tls_env("SSL_CERT_FILE", "/fallback.pem", || {
+            let mut config = Config::default();
+            config.apply_env_overrides();
+            assert_eq!(config.gerrit.ca_cert.as_deref(), Some("/fallback.pem"));
+        });
+    }
+
+    #[test]
+    fn env_override_ssl_cert_dir() {
+        with_env("SSL_CERT_DIR", "/my/certs", || {
+            let mut config = Config::default();
+            config.apply_env_overrides();
+            assert_eq!(config.gerrit.ca_cert_dir.as_deref(), Some("/my/certs"));
+        });
+    }
+
+    #[test]
+    fn env_override_verify_ssl_true() {
+        with_env("GERRIT_VERIFY_SSL", "true", || {
+            let mut config = Config::default();
+            config.gerrit.verify_ssl = false;
+            config.apply_env_overrides();
+            assert!(config.gerrit.verify_ssl);
+        });
+    }
+
+    #[test]
+    fn env_override_verify_ssl_false() {
+        with_env("GERRIT_VERIFY_SSL", "false", || {
+            let mut config = Config::default();
+            config.gerrit.verify_ssl = true;
+            config.apply_env_overrides();
+            assert!(!config.gerrit.verify_ssl);
+        });
+    }
+
+    #[test]
+    fn env_override_verify_ssl_0() {
+        with_env("GERRIT_VERIFY_SSL", "0", || {
+            let mut config = Config::default();
+            config.gerrit.verify_ssl = true;
+            config.apply_env_overrides();
+            assert!(!config.gerrit.verify_ssl);
+        });
+    }
+
+    // --- env overrides: auth (indirection) ---
+
+    #[test]
+    fn auth_username_from_env() {
+        with_env("TEST_USER_VAR", "gerrit_admin", || {
+            let mut config = Config::default();
+            config.gerrit.auth.username_env = Some("TEST_USER_VAR".into());
+            config.apply_env_overrides();
+            assert_eq!(config.gerrit.auth.username.as_deref(), Some("gerrit_admin"));
+        });
     }
 
     #[test]
     fn auth_token_from_env() {
-        let mut config = Config::default();
-        config.gerrit.auth.auth_token_env = Some("TEST_AUTH_TOKEN".into());
-        assert!(config.gerrit.auth.auth_token.is_none());
+        with_env("TEST_AUTH_TOKEN", "secret123", || {
+            let mut config = Config::default();
+            config.gerrit.auth.auth_token_env = Some("TEST_AUTH_TOKEN".into());
+            config.apply_env_overrides();
+            assert_eq!(config.gerrit.auth.auth_token.as_deref(), Some("secret123"));
+        });
     }
 
     #[test]
     fn bearer_token_from_env() {
-        let mut config = Config::default();
-        config.gerrit.auth.token_env = Some("TEST_BEARER_TOKEN".into());
-        assert!(config.gerrit.auth.bearer_token.is_none());
+        with_env("TEST_BEARER_TOKEN", "bearer_secret", || {
+            let mut config = Config::default();
+            config.gerrit.auth.token_env = Some("TEST_BEARER_TOKEN".into());
+            config.apply_env_overrides();
+            assert_eq!(
+                config.gerrit.auth.bearer_token.as_deref(),
+                Some("bearer_secret")
+            );
+        });
     }
+
+    // --- env overrides: service ---
+
+    #[test]
+    fn env_override_default_max_results() {
+        with_env("MCP_DEFAULT_MAX_RESULTS", "50", || {
+            let mut config = Config::default();
+            config.apply_env_overrides();
+            assert_eq!(config.service.default_max_results, 50);
+        });
+    }
+
+    // --- env overrides: cache ---
+
+    #[test]
+    fn env_override_cache_enabled() {
+        with_env("MCP_CACHE_ENABLED", "1", || {
+            let mut config = Config::default();
+            config.apply_env_overrides();
+            assert!(config.cache.enabled);
+        });
+    }
+
+    #[test]
+    fn env_override_cache_ttl() {
+        with_env("MCP_CACHE_TTL_SECS", "600", || {
+            let mut config = Config::default();
+            config.apply_env_overrides();
+            assert_eq!(config.cache.ttl_secs, 600);
+        });
+    }
+
+    #[test]
+    fn env_override_cache_max_entries() {
+        with_env("MCP_CACHE_MAX_ENTRIES", "500", || {
+            let mut config = Config::default();
+            config.apply_env_overrides();
+            assert_eq!(config.cache.max_entries, 500);
+        });
+    }
+
+    // --- env overrides: rate_limit ---
+
+    #[test]
+    fn env_override_rate_limit_enabled() {
+        with_env("MCP_RATE_LIMIT_ENABLED", "yes", || {
+            let mut config = Config::default();
+            config.apply_env_overrides();
+            assert!(config.rate_limit.enabled);
+        });
+    }
+
+    #[test]
+    fn env_override_rate_limit_rps() {
+        with_env("MCP_RATE_LIMIT_RPS", "15", || {
+            let mut config = Config::default();
+            config.apply_env_overrides();
+            assert_eq!(config.rate_limit.requests_per_second, 15);
+        });
+    }
+
+    #[test]
+    fn env_override_rate_limit_burst() {
+        with_env("MCP_RATE_LIMIT_BURST", "30", || {
+            let mut config = Config::default();
+            config.apply_env_overrides();
+            assert_eq!(config.rate_limit.burst, 30);
+        });
+    }
+
+    // --- env overrides: transport ---
+
+    #[test]
+    fn env_override_transport_mode() {
+        with_env("MCP_TRANSPORT", "http", || {
+            let mut config = Config::default();
+            config.apply_env_overrides();
+            assert_eq!(config.transport.mode, "http");
+        });
+    }
+
+    #[test]
+    fn env_override_bind_addr() {
+        with_env("MCP_BIND_ADDR", "0.0.0.0:9090", || {
+            let mut config = Config::default();
+            config.apply_env_overrides();
+            assert_eq!(config.transport.bind_addr, "0.0.0.0:9090");
+        });
+    }
+
+    #[test]
+    fn env_override_http_path() {
+        with_env("MCP_HTTP_PATH", "/custom-mcp", || {
+            let mut config = Config::default();
+            config.apply_env_overrides();
+            assert_eq!(config.transport.http_path, "/custom-mcp");
+        });
+    }
+
+    #[test]
+    fn env_override_health_path() {
+        with_env("MCP_HEALTH_PATH", "/health", || {
+            let mut config = Config::default();
+            config.apply_env_overrides();
+            assert_eq!(config.transport.health_path, "/health");
+        });
+    }
+
+    #[test]
+    fn env_override_ready_path() {
+        with_env("MCP_READY_PATH", "/ready", || {
+            let mut config = Config::default();
+            config.apply_env_overrides();
+            assert_eq!(config.transport.ready_path, "/ready");
+        });
+    }
+
+    #[test]
+    fn env_override_metrics_path() {
+        with_env("MCP_METRICS_PATH", "/mymetrics", || {
+            let mut config = Config::default();
+            config.apply_env_overrides();
+            assert_eq!(config.transport.metrics_path, "/mymetrics");
+        });
+    }
+
+    #[test]
+    fn env_override_allowed_hosts() {
+        with_env("MCP_ALLOWED_HOSTS", "  host1 , host2 , , host3  ", || {
+            let mut config = Config::default();
+            config.apply_env_overrides();
+            assert_eq!(
+                config.transport.allowed_hosts,
+                vec!["host1", "host2", "host3"]
+            );
+        });
+    }
+
+    #[test]
+    fn env_override_mcp_auth_token() {
+        with_env("MCP_AUTH_TOKEN", "secret-mcp-token", || {
+            let mut config = Config::default();
+            config.apply_env_overrides();
+            assert_eq!(config.transport.mcp_auth_token, "secret-mcp-token");
+        });
+    }
+
+    // --- env overrides: log ---
+
+    #[test]
+    fn env_override_log_level_via_rust_log() {
+        with_env("RUST_LOG", "debug", || {
+            let mut config = Config::default();
+            config.apply_env_overrides();
+            assert_eq!(config.log.level, "debug");
+        });
+    }
+
+    #[test]
+    fn env_override_log_level_via_mcp_log_level() {
+        with_env("MCP_LOG_LEVEL", "trace", || {
+            let mut config = Config::default();
+            config.apply_env_overrides();
+            assert_eq!(config.log.level, "trace");
+        });
+    }
+
+    #[test]
+    fn mcp_log_level_wins_over_rust_log() {
+        with_env("RUST_LOG", "info", || {
+            with_env("MCP_LOG_LEVEL", "warn", || {
+                let mut config = Config::default();
+                config.apply_env_overrides();
+                assert_eq!(config.log.level, "warn");
+            });
+        });
+    }
+
+    // --- apply_bool_env ---
+
+    #[test]
+    fn bool_env_true_variants() {
+        for v in &["true", "True", "TRUE", "1", "yes", "YES"] {
+            let mut flag = false;
+            with_env("TEST_BOOL", v, || {
+                apply_bool_env("TEST_BOOL", &mut flag);
+            });
+            assert!(flag, "expected true for '{v}'");
+        }
+    }
+
+    #[test]
+    fn bool_env_false_variants() {
+        for v in &["false", "False", "FALSE", "0", "no", "NO"] {
+            let mut flag = true;
+            with_env("TEST_BOOL", v, || {
+                apply_bool_env("TEST_BOOL", &mut flag);
+            });
+            assert!(!flag, "expected false for '{v}'");
+        }
+    }
+
+    #[test]
+    fn bool_env_unknown_value_preserves_default() {
+        let mut flag = true;
+        with_env("TEST_BOOL", "garbage", || {
+            apply_bool_env("TEST_BOOL", &mut flag);
+        });
+        assert!(flag, "garbage value should preserve existing value");
+    }
+
+    // --- defaults ---
 
     #[test]
     fn transport_defaults() {
         let config = TransportConfig::default();
         assert_eq!(config.mode, "both");
-        assert_eq!(config.bind_addr, "0.0.0.0:8080");
+        assert_eq!(config.bind_addr, "127.0.0.1:8080");
         assert_eq!(config.http_path, "/mcp");
         assert!(config.allowed_hosts.is_empty());
+        assert!(config.mcp_auth_token.is_empty());
     }
 
     #[test]
@@ -467,5 +910,6 @@ unknown_field = 42
     fn service_defaults() {
         let config = ServiceConfig::default();
         assert_eq!(config.default_max_results, 25);
+        assert!(!config.read_only);
     }
 }

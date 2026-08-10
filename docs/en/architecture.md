@@ -12,25 +12,33 @@ gerrit-mcp-server/
 ├── crates/
 │   ├── gerrit-core/            # Library — no MCP dependencies
 │   │   └── src/
-│   │       ├── domain.rs       # Data models: Change, Account, Group, Project, …
-│   │       ├── application.rs  # Service layer: query, changes, reviews logic
+│   │       ├── domain.rs       # Data models + GerritRepository trait
+│   │       ├── domain/
+│   │       │   ├── error.rs    # Error types (DomainError, CacheError, RateLimitError)
+│   │       │   └── mock.rs     # MockGerritRepository for testing
+│   │       ├── application.rs  # GerritService — caching + rate-limit decorator
 │   │       └── infrastructure/
-│   │           ├── client.rs   # HTTP client for Gerrit REST API
+│   │           ├── auth.rs     # AuthMode enum, gitcookies parser, AuthManager
+│   │           ├── client.rs   # GerritClient — reqwest HTTP client for Gerrit REST API
 │   │           ├── tls.rs      # TLS configuration builder (rustls + native certs)
-│   │           ├── cache.rs    # In-memory TTL cache (DashMap)
-│   │           └── rate_limit.rs # Token-bucket rate limiter (governor)
+│   │           ├── cache.rs    # In-memory TTL + LRU cache (lru::LruCache + Mutex)
+│   │           └── rate_limit.rs # Token-bucket rate limiter (governor GCRA)
 │   └── gerrit-mcp/             # Binary — MCP server layer
 │       └── src/
-│           ├── main.rs         # Entry point, CLI args, logging init
+│           ├── main.rs         # Entry point, CLI args, auth resolution
 │           ├── config.rs       # TOML config loading + env var overrides
+│           ├── health.rs       # /healthz, /readyz, /metrics handlers
 │           ├── mcp/
-│           │   ├── mod.rs      # MCP server setup, tool dispatch
-│           │   └── tools.rs    # Tool definitions (JSON Schema via schemars)
+│           │   ├── mod.rs      # GerritServer, tool router, helpers
+│           │   ├── tools.rs    # Tool parameter types (JSON Schema via schemars)
+│           │   ├── changes.rs  # Change lifecycle tool handlers
+│           │   ├── reviews.rs  # Review and cherry-pick tool handlers
+│           │   └── comments.rs # Comment and draft tool handlers
 │           ├── transport/
-│           │   ├── mod.rs      # Transport abstraction
+│           │   ├── mod.rs      # Transport dispatcher (stdio / http / both)
 │           │   ├── stdio.rs    # stdin/stdout transport
 │           │   └── http.rs     # Axum + rmcp Streamable HTTP transport
-│           └── health.rs       # /healthz, /readyz, /metrics endpoints
+│           └── tests/          # CLI and integration tests
 ├── config/
 │   ├── config.example.toml     # Annotated configuration template
 │   ├── config.toml             # Your local config (gitignored)
@@ -56,8 +64,8 @@ gerrit-mcp-server/
 │  └── health.rs       health/metrics │
 ├─────────────────────────────────────┤
 │  gerrit-core (library)              │
-│  ├── application.rs  service layer  │
-│  ├── domain.rs       data models    │
+│  ├── application.rs  caching/rate   │
+│  ├── domain.rs       trait + models │
 │  └── infrastructure/                │
 │      ├── client.rs   HTTP client    │
 │      ├── tls.rs      TLS setup      │
@@ -82,23 +90,29 @@ other contexts.
 
 | Module | Purpose |
 |---|---|
-| `domain.rs` | All data types: `Change`, `Account`, `Group`, `Project`, `Review`, error types (`CoreError`) |
-| `application.rs` | High-level operations: `query_changes()`, `get_change_details()`, `submit_change()`, with pagination, caching |
-| `infrastructure/client.rs` | `reqwest`-based HTTP client: request building, auth header injection, response parsing |
-| `infrastructure/tls.rs` | TLS configuration: custom CA loading, rustls setup, PEM parsing |
-| `infrastructure/cache.rs` | In-memory cache with TTL eviction using `DashMap` |
-| `infrastructure/rate_limit.rs` | Token-bucket rate limiter via `governor` |
+| `domain.rs` | Data types: `Change`, `ChangeDetail`, `RevisionInfo`, `Comment`, etc. `GerritRepository` trait (25 async methods) covering all Gerrit API operations |
+| `domain/error.rs` | `DomainError` enum with variants: `HttpStatus`, `Network`, `Decode`, `Tls`, `Auth`, `Cache`, `RateLimit`, `NotImplemented` |
+| `domain/mock.rs` | `MockGerritRepository` — full in-memory mock for linearised testing |
+| `application.rs` | `GerritService<R>` — decorator over any `GerritRepository`. Applies optional `MemoryCache` (TTL + LRU) and `TokenBucket` rate limiting. Implements `GerritRepository` trait |
+| `infrastructure/client.rs` | `GerritClient` — `reqwest`-based implementation of `GerritRepository`. Handles XSSI prefix stripping, percent-encoding, JSON decoding, HTTP error mapping |
+| `infrastructure/auth.rs` | `AuthMode` enum (`HttpBasic`, `Bearer`, `GitCookies`). `parse_gitcookies()` for Netscape-format cookies. URL normalisation (forces HTTPS, appends `/a` for HTTP Basic and GitCookies). `AuthManager` for per-host auth lookup |
+| `infrastructure/tls.rs` | `TlsConfig` + `build_tls_connector()`. System trust store via `rustls-native-certs`, custom CA file/dir via `rustls-pemfile`, `NoVerifier` for disabled verification |
+| `infrastructure/cache.rs` | `MemoryCache<K,V>` — TTL + LRU using `lru::LruCache` + `Mutex`. Thread-safe, lazy expiry on access |
+| `infrastructure/rate_limit.rs` | `TokenBucket` — wraps `governor::RateLimiter` with GCRA algorithm. Blocking `acquire()` and non-blocking `check()` |
 
 ### `gerrit-mcp` — MCP server
 
 | Module | Purpose |
 |---|---|
-| `mcp/mod.rs` | MCP server initialisation, tool handler dispatch, error mapping (`CoreError` → MCP error codes) |
-| `mcp/tools.rs` | Tool type definitions with JSON Schema (schemars): names, descriptions, parameter types, defaults |
-| `config.rs` | Config loading: TOML parsing, env var overrides, validation |
-| `transport/http.rs` | Axum router with `NeverSessionManager` (stateless, MCP 2026-07-28 protocol): MCP endpoint, health, readiness, metrics |
+| `mcp/mod.rs` | `GerritServer<R>` — MCP server holding an `Arc<R>` repository. 28 `#[tool]`-annotated methods. Dynamic client resolution for multi-instance Gerrit (via `gerrit_base_url` param). Helpers: `extract_bugs()`, `sort_by_date()`, `merge_options()` |
+| `mcp/tools.rs` | Parameter types with JSON Schema (schemars) for all 28 tools |
+| `mcp/changes.rs` | Tool implementations for change lifecycle: query, create, set ready/WIP/topic, abandon, revert, submit |
+| `mcp/reviews.rs` | Tool implementations for reviews and cherry-picks: list files, get diff, suggest/add reviewer, cherry-pick single/chain |
+| `mcp/comments.rs` | Tool implementations for comments: list, post, delete drafts, publish |
+| `config.rs` | `Config` struct + sub-sections. TOML parsing, env var overrides, validation. `ConfigError` enum |
+| `transport/http.rs` | Axum router with rmcp `StreamableHttpService`. `NeverSessionManager` for stateless MCP 2026-07-28. Optional `mcp_auth_token` middleware (constant-time comparison). DNS rebinding protection via `allowed_hosts` |
 | `transport/stdio.rs` | stdin/stdout transport via rmcp |
-| `health.rs` | Health check handlers: liveness, readiness with Gerrit probe, Prometheus metrics collection |
+| `health.rs` | Global `Metrics` singleton with atomic counters. Handlers for `/healthz`, `/readyz`, `/metrics` (Prometheus format) |
 | `main.rs` | Entry point: CLI parsing, config init, transport selection, shutdown signal handling |
 
 ---
@@ -116,7 +130,7 @@ transport/stdio.rs or http.rs   ← receives MCP message
 mcp/mod.rs                       ← routes by tool name
   │
   ▼
-gerrit-core::application.rs      ← service logic, cache check, rate limit
+gerrit-core::application.rs      ← cache check, rate limit
   │
   ▼
 gerrit-core::infrastructure/
@@ -163,11 +177,12 @@ dependencies out of the core HTTP client. This means:
   Docker Alpine builds
 - `rustls-native-certs` provides integration with the system trust store when needed
 
-### Why DashMap for cache?
+### Why LRU cache with Mutex?
 
-`DashMap` is a concurrent hashmap — it allows lock-free reads and fine-grained
-locking for writes. For an MCP server handling parallel LLM requests, this avoids
-contention that a `Mutex<RwLock<HashMap>>` would create.
+`lru::LruCache` wrapped in `Mutex` provides a simple, correct concurrent cache.
+For an MCP server handling parallel LLM requests, a coarse lock on the cache
+is acceptable because cache operations are fast and the primary latency comes
+from Gerrit API calls, not cache access.
 
 ### Why governor for rate limiting?
 

@@ -25,8 +25,8 @@ git checkout -b feat/моя-фича
 ## Запуск тестов
 
 ```bash
-# Все тесты
-cargo test --workspace
+# Все тесты (276+). Используйте --test-threads=1 во избежание гонок env-переменных
+cargo test --workspace -- --test-threads=1
 
 # Отдельный крейт
 cargo test -p gerrit-core
@@ -89,17 +89,23 @@ Workflow GitHub Actions: `.github/workflows/ci.yml`
 1. **Добавьте доменный тип** в `gerrit-core/src/domain.rs`, если API возвращает
    новую форму ответа.
 
-2. **Добавьте метод клиента** в `gerrit-core/src/infrastructure/client.rs` —
-   реализуйте HTTP-вызов к эндпоинту Gerrit REST API.
+2. **Добавьте метод типажа** в `GerritRepository` в `domain.rs` и реализуйте
+   его в `infrastructure/client.rs`.
 
-3. **Добавьте метод приложения** в `gerrit-core/src/application.rs` —
-   подключите кэширование, ограничение частоты и форматирование.
+3. **Проведите через декоратор** в `application.rs` — `GerritService` делегирует
+   внутреннему репозиторию.
 
-4. **Определите схему инструмента** в `gerrit-mcp/src/mcp/tools.rs`:
+4. **Определите тип параметров** в `gerrit-mcp/src/mcp/tools.rs` с
+   derive-макросами `schemars` для генерации JSON Schema.
+
+5. **Реализуйте обработчик** в соответствующем модуле `mcp/`
+   (`changes.rs`, `reviews.rs` или `comments.rs`):
    ```rust
-    #[tool(description = "Получение изменения по ID")]
-    async fn get_change_details(
+   #[tool(description = "Получение изменения по ID")]
+   async fn get_change_details(
+       &self,
        change_id: String,
+       ...
    ) -> Result<CallToolResult, McpError> {
        // …
    }
@@ -107,11 +113,11 @@ Workflow GitHub Actions: `.github/workflows/ci.yml`
    Используйте `#[param(description = "...")]` для каждого параметра — эти описания
    передаются LLM-клиентам и напрямую влияют на качество вызовов инструментов.
 
-5. **Зарегистрируйте обработчик** в `gerrit-mcp/src/mcp/mod.rs` — добавьте
-   инструмент в список инструментов сервера и свяжите с методом приложения.
+6. **Зарегистрируйте обработчик** в `gerrit-mcp/src/mcp/mod.rs` — инструмент
+   автоматически обнаруживается через макрос `#[tool]`.
 
-6. **Добавьте тесты** — модульные тесты для доменного типа, интеграционные тесты
-   для HTTP-клиента (с мок-ответом Gerrit) и тесты обработчика для слоя MCP.
+7. **Добавьте тесты** — модульные тесты для доменного типа, тесты с моком для
+   обработчика и интеграционные тесты для HTTP-клиента.
 
 ---
 
@@ -122,7 +128,10 @@ Workflow GitHub Actions: `.github/workflows/ci.yml`
 - Соответствующие страницы в `docs/en/` и `docs/ru/` (поддерживайте синхронизацию)
 - `README.md`, если изменения затрагивают быстрый старт или список возможностей
 - `CHANGELOG.md` — добавляйте запись в раздел `[Unreleased]`
-- `config/config.example.toml` — если меняются параметры конфигурации
+- `config/config.example.toml` и `config/.env.example` — если меняются параметры конфигурации.
+  Каждое поле конфигурации должно иметь соответствующую env-переменную в `config.rs::apply_env_overrides()`.
+  Соглашение об именах: `GERRIT_*` для секции `[gerrit]`, `MCP_*` для серверных настроек.
+  Булевы env-переменные принимают `true`/`1`/`yes` (включить) и `false`/`0`/`no` (выключить).
 
 ---
 
@@ -146,13 +155,13 @@ cargo build --workspace --release
 
 Релизы автоматизированы через `.github/workflows/release.yml`:
 
-1. Отправьте тег, например `v0.1.0`
+1. Отправьте тег, например `v1.1.1`
 2. CI собирает мультиархитектурные Docker-образы и создаёт GitHub Release
 3. Бинарные артефакты прикрепляются к релизу
 
 Ручные шаги (для отладки workflow):
 
 ```bash
-docker build -t gerrit-mcp:v0.1.0 .
-docker tag gerrit-mcp:v0.1.0 gerrit-mcp:latest
+docker build -t gerrit-mcp:v1.1.1 .
+docker tag gerrit-mcp:v1.1.1 gerrit-mcp:latest
 ```
