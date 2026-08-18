@@ -15,7 +15,7 @@ code review. Designed for **AOSP 15** scale workflows.
 
 ### Features
 
-- **28 MCP tools** — full Gerrit REST API coverage: query changes, manage
+- **29 MCP tools** — full Gerrit REST API coverage: query changes, manage
   lifecycle, code review, cherry-pick, drafts and comments
 - **Dual transport** — stdio (`docker exec`) and Streamable HTTP (axum + rmcp)
 - **Flexible auth** — HTTP Basic, Bearer token, Git cookies, or anonymous access
@@ -138,7 +138,7 @@ Full documentation is available in `docs/en/`:
 
 - [Overview](docs/en/overview.md) — capabilities and project status
 - [Installation](docs/en/installation.md) — requirements, build, Docker
-- [Usage](docs/en/usage.md) — config reference, transport modes, all 28 MCP tools
+- [Usage](docs/en/usage.md) — config reference, transport modes, all 29 MCP tools
 - [Architecture](docs/en/architecture.md) — workspace layout, crate responsibilities, data flow
 - [Development](docs/en/development.md) — contributing, testing, CI, conventions
 
@@ -171,7 +171,7 @@ code review. Разработан для рабочих процессов ма�
 
 ### Возможности
 
-- **28 инструментов MCP** — полное покрытие Gerrit REST API: поиск изменений,
+- **29 инструментов MCP** — полное покрытие Gerrit REST API: поиск изменений,
   управление жизненным циклом, ревью, cherry-pick, черновики и комментарии
 - **Двойной транспорт** — stdio (`docker exec`) и Streamable HTTP (axum + rmcp)
 - **Гибкая аутентификация** — HTTP Basic, Bearer-токен, Git cookies или анонимный доступ
@@ -294,7 +294,7 @@ allowed_hosts = ["localhost", "127.0.0.1", "gerrit-mcp", "gerrit-mcp:8004"]
 
 - [Обзор](docs/ru/overview.md) — возможности и статус проекта
 - [Установка](docs/ru/installation.md) — требования, сборка, Docker
-- [Использование](docs/ru/usage.md) — справочник по конфигурации, режимы транспорта, все 28 инструментов MCP
+- [Использование](docs/ru/usage.md) — справочник по конфигурации, режимы транспорта, все 29 инструментов MCP
 - [Архитектура](docs/ru/architecture.md) — структура workspace, зоны ответственности крейтов, поток данных
 - [Разработка](docs/ru/development.md) — участие, тестирование, CI, соглашения
 

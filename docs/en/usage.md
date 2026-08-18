@@ -219,7 +219,7 @@ healthcheck:
 
 ## MCP tools reference
 
-The server exposes **28 tools** covering the full Gerrit REST API.
+The server exposes **29 tools** covering the full Gerrit REST API.
 
 ### Querying changes
 
@@ -261,6 +261,7 @@ The server exposes **28 tools** covering the full Gerrit REST API.
 |---|---|---|
 | `add_reviewer` | Add a reviewer to a change | `change_id`, `reviewer`, `state?` |
 | `suggest_reviewers` | Get reviewer suggestions | `change_id`, `query`, `limit?`, `exclude_groups?` |
+| `set_labels` | Set one or more label votes on a change | `change_id`, `labels`, `message?`, `gerrit_base_url?` |
 | `post_review_comment` | Post a review comment | `change_id`, `file_path`, `line_number`, `message`, `unresolved?` |
 | `post_draft_comment` | Post a draft comment | `change_id`, `file_path`, `line_number`, `message`, `suggestion?`, `in_reply_to?` |
 | `delete_draft_comment` | Delete a specific draft | `change_id`, `draft_id` |
