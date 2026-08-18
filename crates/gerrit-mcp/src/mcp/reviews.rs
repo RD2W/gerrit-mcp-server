@@ -17,14 +17,11 @@ pub async fn list_change_files<R: GerritRepository + Send + Sync + 'static>(
     server: &GerritServer<R>,
     params: ListChangeFilesParams,
 ) -> CallToolResult {
-    let result = if let Some(ref url) = params.gerrit_base_url {
-        match server.resolve_client(Some(url)) {
-            Ok(client) => client.list_files(&params.change_id).await,
-            Err(e) => return server.error(e),
-        }
-    } else {
-        server.repo.list_files(&params.change_id).await
+    let repo = match server.resolve_repo(params.gerrit_base_url.as_deref()) {
+        Ok(r) => r,
+        Err(e) => return e,
     };
+    let result = repo.list_files(&params.change_id).await;
     match result {
         Ok(files) => {
             let mut lines = Vec::new();
@@ -59,17 +56,11 @@ pub async fn get_file_diff<R: GerritRepository + Send + Sync + 'static>(
     server: &GerritServer<R>,
     params: GetFileDiffParams,
 ) -> CallToolResult {
-    let result = if let Some(ref url) = params.gerrit_base_url {
-        match server.resolve_client(Some(url)) {
-            Ok(client) => client.get_diff(&params.change_id, &params.file_path).await,
-            Err(e) => return server.error(e),
-        }
-    } else {
-        server
-            .repo
-            .get_diff(&params.change_id, &params.file_path)
-            .await
+    let repo = match server.resolve_repo(params.gerrit_base_url.as_deref()) {
+        Ok(r) => r,
+        Err(e) => return e,
     };
+    let result = repo.get_diff(&params.change_id, &params.file_path).await;
     match result {
         Ok(text) => server.text(text),
         Err(e) => server.error(format!("Failed to get file diff: {e}")),
@@ -81,33 +72,19 @@ pub async fn suggest_reviewers<R: GerritRepository + Send + Sync + 'static>(
     params: SuggestReviewersParams,
 ) -> CallToolResult {
     let exclude_groups = params.exclude_groups.unwrap_or(false);
-    let result = if let Some(ref url) = params.gerrit_base_url {
-        match server.resolve_client(Some(url)) {
-            Ok(client) => {
-                client
-                    .suggest_reviewers(
-                        &params.change_id,
-                        &params.query,
-                        params.limit,
-                        exclude_groups,
-                        params.reviewer_state.as_deref(),
-                    )
-                    .await
-            }
-            Err(e) => return server.error(e),
-        }
-    } else {
-        server
-            .repo
-            .suggest_reviewers(
-                &params.change_id,
-                &params.query,
-                params.limit,
-                exclude_groups,
-                params.reviewer_state.as_deref(),
-            )
-            .await
+    let repo = match server.resolve_repo(params.gerrit_base_url.as_deref()) {
+        Ok(r) => r,
+        Err(e) => return e,
     };
+    let result = repo
+        .suggest_reviewers(
+            &params.change_id,
+            &params.query,
+            params.limit,
+            exclude_groups,
+            params.reviewer_state.as_deref(),
+        )
+        .await;
     match result {
         Ok(suggestions) => {
             if suggestions.is_empty() {

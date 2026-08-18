@@ -15,14 +15,11 @@ pub async fn list_change_comments<R: GerritRepository + Send + Sync + 'static>(
     server: &GerritServer<R>,
     params: ListChangeCommentsParams,
 ) -> CallToolResult {
-    let result = if let Some(ref url) = params.gerrit_base_url {
-        match server.resolve_client(Some(url)) {
-            Ok(client) => client.list_comments(&params.change_id).await,
-            Err(e) => return server.error(e),
-        }
-    } else {
-        server.repo.list_comments(&params.change_id).await
+    let repo = match server.resolve_repo(params.gerrit_base_url.as_deref()) {
+        Ok(r) => r,
+        Err(e) => return e,
     };
+    let result = repo.list_comments(&params.change_id).await;
     match result {
         Ok(comments) => {
             if comments.is_empty() {
@@ -62,14 +59,11 @@ pub async fn list_draft_comments<R: GerritRepository + Send + Sync + 'static>(
     server: &GerritServer<R>,
     params: ListDraftCommentsParams,
 ) -> CallToolResult {
-    let result = if let Some(ref url) = params.gerrit_base_url {
-        match server.resolve_client(Some(url)) {
-            Ok(client) => client.list_drafts(&params.change_id).await,
-            Err(e) => return server.error(e),
-        }
-    } else {
-        server.repo.list_drafts(&params.change_id).await
+    let repo = match server.resolve_repo(params.gerrit_base_url.as_deref()) {
+        Ok(r) => r,
+        Err(e) => return e,
     };
+    let result = repo.list_drafts(&params.change_id).await;
     match result {
         Ok(drafts) => {
             if drafts.is_empty() {
