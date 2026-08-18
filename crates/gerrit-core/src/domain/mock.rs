@@ -533,4 +533,12 @@ mod tests {
             .unwrap();
         assert_eq!(result.status, "MERGED");
     }
+
+    #[tokio::test]
+    async fn mock_set_labels_returns_pushed() {
+        let mock = MockGerritRepository::default();
+        mock.push_set_labels_result(Ok(()));
+        let payload = ReviewInput::default();
+        mock.set_labels("123", &payload).await.unwrap();
+    }
 }
