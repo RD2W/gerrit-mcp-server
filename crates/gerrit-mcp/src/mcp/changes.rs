@@ -428,7 +428,16 @@ pub async fn set_labels<R: GerritRepository + Send + Sync + 'static>(
         notify: None,
         omit_duplicate_comments: None,
     };
-    match server.repo.set_labels(&params.change_id, &payload).await {
+    let result = if let Some(ref url) = params.gerrit_base_url {
+        match server.resolve_client(Some(url)) {
+            Ok(client) => client.set_labels(&params.change_id, &payload).await,
+            Err(e) => return server.error(e),
+        }
+    } else {
+        server.repo.set_labels(&params.change_id, &payload).await
+    };
+
+    match result {
         Ok(()) => server.text(format!(
             "Labels set on change {}: {}",
             params.change_id,

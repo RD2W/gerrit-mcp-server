@@ -862,7 +862,7 @@ mod tests {
             change_id: "123".into(),
             labels: BTreeMap::from([("READY-FOR-CI".into(), 1)]),
             message: Some("Trigger".into()),
-            gerrit_base_url: Some("https://g.example.com".into()),
+            gerrit_base_url: None,
         };
         let result = server.set_labels(Parameters(params)).await;
         let text = extract_text(result);
@@ -897,7 +897,7 @@ mod tests {
             change_id: "123".into(),
             labels: BTreeMap::from([("READY-FOR-CI".into(), 1)]),
             message: None,
-            gerrit_base_url: Some("https://g.example.com".into()),
+            gerrit_base_url: None,
         };
         let result = server.set_labels(Parameters(params)).await;
         assert!(result.is_error.unwrap_or(false));
