@@ -774,7 +774,7 @@ async fn test_abandon_change_pipeline() {
     let params = AbandonChangeParams {
         change_id: "600".into(),
         message: Some("No longer needed".into()),
-        gerrit_base_url: Some("https://g.example.com".into()),
+        gerrit_base_url: None,
     };
     let result = server.abandon_change(Parameters(params)).await;
     let text = extract_text(result);
@@ -795,7 +795,7 @@ async fn test_revert_change_pipeline() {
     let params = RevertChangeParams {
         change_id: "700".into(),
         message: None,
-        gerrit_base_url: Some("https://g.example.com".into()),
+        gerrit_base_url: None,
     };
     let result = server.revert_change(Parameters(params)).await;
     let text = extract_text(result);
@@ -816,7 +816,7 @@ async fn test_revert_submission_pipeline() {
     let params = RevertSubmissionParams {
         change_id: "800".into(),
         message: None,
-        gerrit_base_url: Some("https://g.example.com".into()),
+        gerrit_base_url: None,
     };
     let result = server.revert_submission(Parameters(params)).await;
     let text = extract_text(result);
@@ -844,7 +844,7 @@ async fn test_cherry_pick_change_pipeline() {
         keep_reviewers: None,
         allow_conflicts: None,
         allow_empty: None,
-        gerrit_base_url: Some("https://g.example.com".into()),
+        gerrit_base_url: None,
     };
     let result = server.cherry_pick_change(Parameters(params)).await;
     let text = extract_text(result);
@@ -867,7 +867,7 @@ async fn test_submit_change_pipeline() {
     let params = SubmitChangeParams {
         change_id: "42".into(),
         wait_for_merge: None,
-        gerrit_base_url: Some("https://g.example.com".into()),
+        gerrit_base_url: None,
     };
     let result = server.submit_change(Parameters(params)).await;
     let text = extract_text(result);
@@ -960,7 +960,7 @@ async fn test_set_topic_pipeline() {
     let params = SetTopicParams {
         change_id: "123".into(),
         topic: "my-topic".into(),
-        gerrit_base_url: Some("https://g.example.com".into()),
+        gerrit_base_url: None,
     };
     let result = server.set_topic(Parameters(params)).await;
     let text = extract_text(result);
@@ -977,7 +977,7 @@ async fn test_set_topic_delete() {
     let params = SetTopicParams {
         change_id: "123".into(),
         topic: "".into(),
-        gerrit_base_url: Some("https://g.example.com".into()),
+        gerrit_base_url: None,
     };
     let result = server.set_topic(Parameters(params)).await;
     let text = extract_text(result);
@@ -993,7 +993,7 @@ async fn test_set_ready_pipeline() {
 
     let params = SetReadyParams {
         change_id: "123".into(),
-        gerrit_base_url: Some("https://g.example.com".into()),
+        gerrit_base_url: None,
     };
     let result = server.set_ready_for_review(Parameters(params)).await;
     let text = extract_text(result);
@@ -1010,7 +1010,7 @@ async fn test_set_wip_pipeline() {
     let params = SetWipParams {
         change_id: "123".into(),
         message: Some("Still working on it".into()),
-        gerrit_base_url: Some("https://g.example.com".into()),
+        gerrit_base_url: None,
     };
     let result = server.set_work_in_progress(Parameters(params)).await;
     let text = extract_text(result);

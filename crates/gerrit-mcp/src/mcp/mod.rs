@@ -161,7 +161,6 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         Ok(client)
     }
 
-    #[allow(dead_code)] // used by write-tool handlers in follow-up tasks
     fn resolve_repo(
         &self,
         override_url: Option<&str>,
@@ -973,6 +972,128 @@ mod tests {
             .err()
             .expect("resolve_repo(Some) with factory on bad host should fail");
         let text = extract_text(err);
+        assert!(text.contains("Failed to resolve client"), "got: {text}");
+    }
+
+    #[tokio::test]
+    async fn test_create_change_gerrit_base_url_override_error() {
+        let mock = MockGerritRepository::default();
+        let server = GerritServer::new(mock);
+        let params = CreateChangeParams {
+            project: "p".into(),
+            subject: "s".into(),
+            branch: "main".into(),
+            topic: None,
+            status: None,
+            gerrit_base_url: Some("https://override.example.com".into()),
+        };
+        let result = server.create_change(Parameters(params)).await;
+        assert!(result.is_error.unwrap_or(false));
+        let text = extract_text(result);
+        assert!(text.contains("Failed to resolve client"), "got: {text}");
+    }
+
+    #[tokio::test]
+    async fn test_set_ready_for_review_gerrit_base_url_override_error() {
+        let mock = MockGerritRepository::default();
+        let server = GerritServer::new(mock);
+        let params = SetReadyParams {
+            change_id: "123".into(),
+            gerrit_base_url: Some("https://override.example.com".into()),
+        };
+        let result = server.set_ready_for_review(Parameters(params)).await;
+        assert!(result.is_error.unwrap_or(false));
+        let text = extract_text(result);
+        assert!(text.contains("Failed to resolve client"), "got: {text}");
+    }
+
+    #[tokio::test]
+    async fn test_set_work_in_progress_gerrit_base_url_override_error() {
+        let mock = MockGerritRepository::default();
+        let server = GerritServer::new(mock);
+        let params = SetWipParams {
+            change_id: "123".into(),
+            message: None,
+            gerrit_base_url: Some("https://override.example.com".into()),
+        };
+        let result = server.set_work_in_progress(Parameters(params)).await;
+        assert!(result.is_error.unwrap_or(false));
+        let text = extract_text(result);
+        assert!(text.contains("Failed to resolve client"), "got: {text}");
+    }
+
+    #[tokio::test]
+    async fn test_set_topic_gerrit_base_url_override_error() {
+        let mock = MockGerritRepository::default();
+        let server = GerritServer::new(mock);
+        let params = SetTopicParams {
+            change_id: "123".into(),
+            topic: "t".into(),
+            gerrit_base_url: Some("https://override.example.com".into()),
+        };
+        let result = server.set_topic(Parameters(params)).await;
+        assert!(result.is_error.unwrap_or(false));
+        let text = extract_text(result);
+        assert!(text.contains("Failed to resolve client"), "got: {text}");
+    }
+
+    #[tokio::test]
+    async fn test_abandon_change_gerrit_base_url_override_error() {
+        let mock = MockGerritRepository::default();
+        let server = GerritServer::new(mock);
+        let params = AbandonChangeParams {
+            change_id: "123".into(),
+            message: None,
+            gerrit_base_url: Some("https://override.example.com".into()),
+        };
+        let result = server.abandon_change(Parameters(params)).await;
+        assert!(result.is_error.unwrap_or(false));
+        let text = extract_text(result);
+        assert!(text.contains("Failed to resolve client"), "got: {text}");
+    }
+
+    #[tokio::test]
+    async fn test_revert_change_gerrit_base_url_override_error() {
+        let mock = MockGerritRepository::default();
+        let server = GerritServer::new(mock);
+        let params = RevertChangeParams {
+            change_id: "123".into(),
+            message: None,
+            gerrit_base_url: Some("https://override.example.com".into()),
+        };
+        let result = server.revert_change(Parameters(params)).await;
+        assert!(result.is_error.unwrap_or(false));
+        let text = extract_text(result);
+        assert!(text.contains("Failed to resolve client"), "got: {text}");
+    }
+
+    #[tokio::test]
+    async fn test_revert_submission_gerrit_base_url_override_error() {
+        let mock = MockGerritRepository::default();
+        let server = GerritServer::new(mock);
+        let params = RevertSubmissionParams {
+            change_id: "123".into(),
+            message: None,
+            gerrit_base_url: Some("https://override.example.com".into()),
+        };
+        let result = server.revert_submission(Parameters(params)).await;
+        assert!(result.is_error.unwrap_or(false));
+        let text = extract_text(result);
+        assert!(text.contains("Failed to resolve client"), "got: {text}");
+    }
+
+    #[tokio::test]
+    async fn test_submit_change_gerrit_base_url_override_error() {
+        let mock = MockGerritRepository::default();
+        let server = GerritServer::new(mock);
+        let params = SubmitChangeParams {
+            change_id: "123".into(),
+            wait_for_merge: None,
+            gerrit_base_url: Some("https://override.example.com".into()),
+        };
+        let result = server.submit_change(Parameters(params)).await;
+        assert!(result.is_error.unwrap_or(false));
+        let text = extract_text(result);
         assert!(text.contains("Failed to resolve client"), "got: {text}");
     }
 }

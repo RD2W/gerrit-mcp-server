@@ -343,7 +343,11 @@ pub async fn create_change<R: GerritRepository + Send + Sync + 'static>(
         base_change: None,
         new_branch: None,
     };
-    match server.repo.create_change(&payload).await {
+    let repo = match server.resolve_repo(params.gerrit_base_url.as_deref()) {
+        Ok(r) => r,
+        Err(e) => return e,
+    };
+    match repo.create_change(&payload).await {
         Ok(change) => server.text(format!(
             "Created change {}_{}: {}",
             change._number, change.updated, change.subject
@@ -359,7 +363,11 @@ pub async fn set_ready_for_review<R: GerritRepository + Send + Sync + 'static>(
     if let Some(r) = server.check_not_readonly("set ready for review") {
         return r;
     }
-    match server.repo.set_ready(&params.change_id).await {
+    let repo = match server.resolve_repo(params.gerrit_base_url.as_deref()) {
+        Ok(r) => r,
+        Err(e) => return e,
+    };
+    match repo.set_ready(&params.change_id).await {
         Ok(()) => server.text(format!(
             "Change {} marked as ready for review.",
             params.change_id
@@ -378,7 +386,11 @@ pub async fn set_work_in_progress<R: GerritRepository + Send + Sync + 'static>(
     let payload = WipRequest {
         message: params.message,
     };
-    match server.repo.set_wip(&params.change_id, &payload).await {
+    let repo = match server.resolve_repo(params.gerrit_base_url.as_deref()) {
+        Ok(r) => r,
+        Err(e) => return e,
+    };
+    match repo.set_wip(&params.change_id, &payload).await {
         Ok(()) => server.text(format!(
             "Change {} marked as work-in-progress.",
             params.change_id
@@ -397,7 +409,11 @@ pub async fn set_topic<R: GerritRepository + Send + Sync + 'static>(
     let payload = TopicRequest {
         topic: params.topic.clone(),
     };
-    match server.repo.set_topic(&params.change_id, &payload).await {
+    let repo = match server.resolve_repo(params.gerrit_base_url.as_deref()) {
+        Ok(r) => r,
+        Err(e) => return e,
+    };
+    match repo.set_topic(&params.change_id, &payload).await {
         Ok(Some(_response)) => server.text(format!("Topic set to '{}'.", params.topic)),
         Ok(None) => server.text("Topic deleted (empty response).".to_string()),
         Err(e) => server.error(format!("Failed to set topic: {e}")),
@@ -458,11 +474,11 @@ pub async fn abandon_change<R: GerritRepository + Send + Sync + 'static>(
         message: params.message,
         notify: None,
     };
-    match server
-        .repo
-        .abandon_change(&params.change_id, &payload)
-        .await
-    {
+    let repo = match server.resolve_repo(params.gerrit_base_url.as_deref()) {
+        Ok(r) => r,
+        Err(e) => return e,
+    };
+    match repo.abandon_change(&params.change_id, &payload).await {
         Ok(change) => server.text(format!(
             "Change {} abandoned: {}",
             change._number, change.subject
@@ -478,8 +494,11 @@ pub async fn revert_change<R: GerritRepository + Send + Sync + 'static>(
     if let Some(r) = server.check_not_readonly("revert change") {
         return r;
     }
-    match server
-        .repo
+    let repo = match server.resolve_repo(params.gerrit_base_url.as_deref()) {
+        Ok(r) => r,
+        Err(e) => return e,
+    };
+    match repo
         .revert_change(&params.change_id, params.message.as_deref())
         .await
     {
@@ -498,8 +517,11 @@ pub async fn revert_submission<R: GerritRepository + Send + Sync + 'static>(
     if let Some(r) = server.check_not_readonly("revert submission") {
         return r;
     }
-    match server
-        .repo
+    let repo = match server.resolve_repo(params.gerrit_base_url.as_deref()) {
+        Ok(r) => r,
+        Err(e) => return e,
+    };
+    match repo
         .revert_submission(&params.change_id, params.message.as_deref())
         .await
     {
@@ -530,7 +552,11 @@ pub async fn submit_change<R: GerritRepository + Send + Sync + 'static>(
         on_behalf_of: None,
         notify: None,
     };
-    match server.repo.submit_change(&params.change_id, &payload).await {
+    let repo = match server.resolve_repo(params.gerrit_base_url.as_deref()) {
+        Ok(r) => r,
+        Err(e) => return e,
+    };
+    match repo.submit_change(&params.change_id, &payload).await {
         Ok(result) => server.text(format!(
             "Successfully submitted change {}: status={}",
             result._number, result.status
