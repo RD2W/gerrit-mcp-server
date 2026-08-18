@@ -852,8 +852,10 @@ mod tests {
 
     #[test]
     fn review_input_supports_negative_values() {
-        let mut input = ReviewInput::default();
-        input.labels = Some(BTreeMap::from([("Code-Review".into(), -1)]));
+        let input = ReviewInput {
+            labels: Some(BTreeMap::from([("Code-Review".into(), -1)])),
+            ..Default::default()
+        };
         let json = serde_json::to_value(&input).unwrap();
         assert_eq!(json["labels"]["Code-Review"], -1);
     }
