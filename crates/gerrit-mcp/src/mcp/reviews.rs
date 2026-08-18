@@ -137,6 +137,10 @@ pub async fn add_reviewer<R: GerritRepository + Send + Sync + 'static>(
     if let Some(r) = server.check_not_readonly("add reviewer") {
         return r;
     }
+    let repo = match server.resolve_repo(params.gerrit_base_url.as_deref()) {
+        Ok(r) => r,
+        Err(e) => return e,
+    };
     let state = params.state.as_deref().unwrap_or(REVIEWER_STATE_REVIEWER);
     if state != REVIEWER_STATE_REVIEWER && state != "CC" {
         return server.error(format!("Invalid state '{}': must be REVIEWER or CC", state));
@@ -147,7 +151,7 @@ pub async fn add_reviewer<R: GerritRepository + Send + Sync + 'static>(
         state: Some(state.to_string()),
         notify: None,
     };
-    match server.repo.add_reviewer(&params.change_id, &payload).await {
+    match repo.add_reviewer(&params.change_id, &payload).await {
         Ok(result) => {
             if let Some(ref err_msg) = result.error {
                 return server.error(format!("Failed to add reviewer: {}", err_msg));
@@ -171,6 +175,10 @@ pub async fn cherry_pick_change<R: GerritRepository + Send + Sync + 'static>(
     if let Some(r) = server.check_not_readonly("cherry-pick change") {
         return r;
     }
+    let repo = match server.resolve_repo(params.gerrit_base_url.as_deref()) {
+        Ok(r) => r,
+        Err(e) => return e,
+    };
     let revision = params.revision_id.as_deref().unwrap_or(DEFAULT_REVISION);
     let payload = CherryPickRequest {
         message: params.message,
@@ -179,11 +187,7 @@ pub async fn cherry_pick_change<R: GerritRepository + Send + Sync + 'static>(
         base: None,
         notify: None,
     };
-    match server
-        .repo
-        .cherry_pick(&params.change_id, revision, &payload)
-        .await
-    {
+    match repo.cherry_pick(&params.change_id, revision, &payload).await {
         Ok(result) => server.text(format!(
             "Successfully cherry-picked to new CL: {}",
             result._number
@@ -199,9 +203,13 @@ pub async fn cherry_pick_chain<R: GerritRepository + Send + Sync + 'static>(
     if let Some(r) = server.check_not_readonly("cherry-pick chain") {
         return r;
     }
+    let repo = match server.resolve_repo(params.gerrit_base_url.as_deref()) {
+        Ok(r) => r,
+        Err(e) => return e,
+    };
     let revision = params.revision_id.as_deref().unwrap_or(DEFAULT_REVISION);
 
-    let related = match server.repo.get_related(&params.change_id, revision).await {
+    let related = match repo.get_related(&params.change_id, revision).await {
         Ok(r) => r,
         Err(e) => return server.error(format!("Failed to get related changes: {e}")),
     };
@@ -226,10 +234,7 @@ pub async fn cherry_pick_chain<R: GerritRepository + Send + Sync + 'static>(
         let change_id_str = rc._change_number.to_string();
         let revision_str = rc._revision_number.to_string();
 
-        match server
-            .repo
-            .cherry_pick(&change_id_str, &revision_str, &cp_payload)
-            .await
+        match repo.cherry_pick(&change_id_str, &revision_str, &cp_payload).await
         {
             Ok(result) => {
                 let new_number = result._number;
@@ -243,7 +248,7 @@ pub async fn cherry_pick_chain<R: GerritRepository + Send + Sync + 'static>(
                     GERRIT_OPTION_CURRENT_REVISION.to_string(),
                     GERRIT_OPTION_CURRENT_COMMIT.to_string(),
                 ];
-                match server.repo.get_change_detail(&new_id, &base_opts).await {
+                match repo.get_change_detail(&new_id, &base_opts).await {
                     Ok(detail) => {
                         if let Some(ref rev_key) = detail.current_revision
                             && let Some(rev_info) = detail.revisions.get(rev_key)

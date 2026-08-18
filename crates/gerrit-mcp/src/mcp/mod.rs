@@ -1184,4 +1184,59 @@ mod tests {
         let text = extract_text(result);
         assert!(text.contains("Failed to resolve client"), "got: {text}");
     }
+
+    #[tokio::test]
+    async fn test_add_reviewer_gerrit_base_url_override_error() {
+        let mock = MockGerritRepository::default();
+        let server = GerritServer::new(mock);
+        let params = AddReviewerParams {
+            change_id: "123".into(),
+            reviewer: "r@example.com".into(),
+            gerrit_base_url: Some("https://override.example.com".into()),
+            state: None,
+        };
+        let result = server.add_reviewer(Parameters(params)).await;
+        assert!(result.is_error.unwrap_or(false));
+        let text = extract_text(result);
+        assert!(text.contains("Failed to resolve client"), "got: {text}");
+    }
+
+    #[tokio::test]
+    async fn test_cherry_pick_change_gerrit_base_url_override_error() {
+        let mock = MockGerritRepository::default();
+        let server = GerritServer::new(mock);
+        let params = CherryPickChangeParams {
+            change_id: "123".into(),
+            destination: "main".into(),
+            revision_id: None,
+            message: None,
+            keep_reviewers: None,
+            allow_conflicts: None,
+            allow_empty: None,
+            gerrit_base_url: Some("https://override.example.com".into()),
+        };
+        let result = server.cherry_pick_change(Parameters(params)).await;
+        assert!(result.is_error.unwrap_or(false));
+        let text = extract_text(result);
+        assert!(text.contains("Failed to resolve client"), "got: {text}");
+    }
+
+    #[tokio::test]
+    async fn test_cherry_pick_chain_gerrit_base_url_override_error() {
+        let mock = MockGerritRepository::default();
+        let server = GerritServer::new(mock);
+        let params = CherryPickChainParams {
+            change_id: "123".into(),
+            destination: "main".into(),
+            revision_id: None,
+            keep_reviewers: None,
+            allow_conflicts: None,
+            allow_empty: None,
+            gerrit_base_url: Some("https://override.example.com".into()),
+        };
+        let result = server.cherry_pick_chain(Parameters(params)).await;
+        assert!(result.is_error.unwrap_or(false));
+        let text = extract_text(result);
+        assert!(text.contains("Failed to resolve client"), "got: {text}");
+    }
 }

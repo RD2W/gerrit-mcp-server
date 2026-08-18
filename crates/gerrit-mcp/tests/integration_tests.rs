@@ -1175,7 +1175,7 @@ async fn test_cherry_pick_chain_pipeline() {
         keep_reviewers: None,
         allow_conflicts: None,
         allow_empty: None,
-        gerrit_base_url: Some("https://g.example.com".into()),
+        gerrit_base_url: None,
     };
     let result = server.cherry_pick_chain(Parameters(params)).await;
     let text = extract_text(result);
@@ -1248,7 +1248,7 @@ async fn test_cherry_pick_chain_partial_failure() {
         keep_reviewers: None,
         allow_conflicts: None,
         allow_empty: None,
-        gerrit_base_url: Some("https://g.example.com".into()),
+        gerrit_base_url: None,
     };
     let result = server.cherry_pick_chain(Parameters(params)).await;
     let text = extract_text(result);
