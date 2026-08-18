@@ -626,11 +626,7 @@ pub trait GerritRepository: Send + Sync {
         message: Option<&str>,
     ) -> Result<Vec<Change>, DomainError>;
 
-    async fn set_labels(
-        &self,
-        change_id: &str,
-        payload: &ReviewInput,
-    ) -> Result<(), DomainError>;
+    async fn set_labels(&self, change_id: &str, payload: &ReviewInput) -> Result<(), DomainError>;
 
     async fn post_review(
         &self,
@@ -678,8 +674,8 @@ pub trait GerritRepository: Send + Sync {
 
 #[cfg(test)]
 mod tests {
-    use serde_json;
     use super::*;
+    use serde_json;
 
     #[test]
     fn domain_error_display_empty_query() {
