@@ -232,11 +232,7 @@ impl<R: GerritRepository> GerritRepository for GerritService<R> {
         self.repo.post_review(change_id, payload).await
     }
 
-    async fn set_labels(
-        &self,
-        change_id: &str,
-        payload: &ReviewInput,
-    ) -> Result<(), DomainError> {
+    async fn set_labels(&self, change_id: &str, payload: &ReviewInput) -> Result<(), DomainError> {
         self.acquire_rate_limit().await?;
         self.repo.set_labels(change_id, payload).await
     }
