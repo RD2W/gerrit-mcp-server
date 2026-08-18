@@ -164,7 +164,10 @@ pub async fn cherry_pick_change<R: GerritRepository + Send + Sync + 'static>(
         base: None,
         notify: None,
     };
-    match repo.cherry_pick(&params.change_id, revision, &payload).await {
+    match repo
+        .cherry_pick(&params.change_id, revision, &payload)
+        .await
+    {
         Ok(result) => server.text(format!(
             "Successfully cherry-picked to new CL: {}",
             result._number
@@ -211,7 +214,9 @@ pub async fn cherry_pick_chain<R: GerritRepository + Send + Sync + 'static>(
         let change_id_str = rc._change_number.to_string();
         let revision_str = rc._revision_number.to_string();
 
-        match repo.cherry_pick(&change_id_str, &revision_str, &cp_payload).await
+        match repo
+            .cherry_pick(&change_id_str, &revision_str, &cp_payload)
+            .await
         {
             Ok(result) => {
                 let new_number = result._number;
