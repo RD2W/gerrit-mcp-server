@@ -831,6 +831,6 @@ mod tests {
             labels: Some(BTreeMap::from([("READY-FOR-CI".into(), 1)])),
             ..ReviewInput::default()
         };
-        client.set_labels("357", &payload).await.unwrap();
+        client.set_labels("123", &payload).await.unwrap();
     }
 }
