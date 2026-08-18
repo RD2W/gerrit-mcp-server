@@ -6,6 +6,12 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **`set_labels` tool** — set one or more label votes (e.g. `READY-FOR-CI: 1`,
+  `TARGET: 3`) in a single `POST /changes/{id}/revisions/current/review` call,
+  with an optional review `message` and no inline comment.
+
 ## [1.2.0] — 2026-08-10
 
 ### Added

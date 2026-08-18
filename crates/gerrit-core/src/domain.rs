@@ -383,7 +383,7 @@ pub struct CreateChangeRequest {
     pub new_branch: Option<bool>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ReviewInput {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -626,6 +626,8 @@ pub trait GerritRepository: Send + Sync {
         message: Option<&str>,
     ) -> Result<Vec<Change>, DomainError>;
 
+    async fn set_labels(&self, change_id: &str, payload: &ReviewInput) -> Result<(), DomainError>;
+
     async fn post_review(
         &self,
         change_id: &str,
@@ -673,6 +675,7 @@ pub trait GerritRepository: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json;
 
     #[test]
     fn domain_error_display_empty_query() {
@@ -824,5 +827,36 @@ mod tests {
 
         let change: Change = serde_json::from_str(json).unwrap();
         assert_eq!(change.reviewers, None);
+    }
+
+    #[test]
+    fn review_input_serializes_labels_and_message_without_comments() {
+        let input = ReviewInput {
+            message: Some("Trigger CI".into()),
+            labels: Some(BTreeMap::from([
+                ("READY-FOR-CI".into(), 1),
+                ("TARGET".into(), 3),
+            ])),
+            comments: None,
+            tag: None,
+            drafts: None,
+            notify: None,
+            omit_duplicate_comments: None,
+        };
+        let json = serde_json::to_value(&input).unwrap();
+        assert_eq!(json["message"], "Trigger CI");
+        assert_eq!(json["labels"]["READY-FOR-CI"], 1);
+        assert_eq!(json["labels"]["TARGET"], 3);
+        assert!(json.get("comments").is_none());
+    }
+
+    #[test]
+    fn review_input_supports_negative_values() {
+        let input = ReviewInput {
+            labels: Some(BTreeMap::from([("Code-Review".into(), -1)])),
+            ..Default::default()
+        };
+        let json = serde_json::to_value(&input).unwrap();
+        assert_eq!(json["labels"]["Code-Review"], -1);
     }
 }

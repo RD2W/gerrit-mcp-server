@@ -494,6 +494,12 @@ impl GerritRepository for GerritClient {
         self.post_empty(&url, payload).await
     }
 
+    async fn set_labels(&self, change_id: &str, payload: &ReviewInput) -> Result<(), DomainError> {
+        let cid = Self::percent_encode(change_id);
+        let url = self.url(&format!("/changes/{cid}/revisions/current/review"));
+        self.post_empty(&url, payload).await
+    }
+
     async fn post_draft(
         &self,
         change_id: &str,
@@ -603,7 +609,7 @@ impl GerritClient {
 mod tests {
     use std::time::Duration;
 
-    use wiremock::matchers::{method, path};
+    use wiremock::matchers::{body_partial_json, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     use super::*;
@@ -804,5 +810,27 @@ mod tests {
 
         let result = client.get_diff("xssi", "src/lib.rs").await.unwrap();
         assert_eq!(result, line1);
+    }
+
+    #[tokio::test]
+    async fn test_set_labels_posts_review_input() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/changes/123/revisions/current/review"))
+            .and(body_partial_json(
+                serde_json::json!({"labels": {"READY-FOR-CI": 1}, "message": "Trigger CI"}),
+            ))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+
+        let client = test_client(&server.uri());
+
+        let payload = ReviewInput {
+            message: Some("Trigger CI".into()),
+            labels: Some(BTreeMap::from([("READY-FOR-CI".into(), 1)])),
+            ..ReviewInput::default()
+        };
+        client.set_labels("123", &payload).await.unwrap();
     }
 }

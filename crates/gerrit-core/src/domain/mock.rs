@@ -36,6 +36,7 @@ pub struct MockGerritRepository {
     pub revert_change_results: Mutex<Vec<Result<Change, DomainError>>>,
     pub revert_submission_results: Mutex<Vec<Result<Vec<Change>, DomainError>>>,
     pub post_review_results: Mutex<Vec<Result<(), DomainError>>>,
+    pub set_labels_results: Mutex<Vec<Result<(), DomainError>>>,
     pub post_draft_results: Mutex<Vec<Result<String, DomainError>>>,
     pub delete_draft_results: Mutex<Vec<Result<(), DomainError>>>,
     pub publish_drafts_results: Mutex<Vec<Result<(), DomainError>>>,
@@ -155,6 +156,10 @@ impl MockGerritRepository {
 
     pub fn push_post_review_result(&self, result: Result<(), DomainError>) {
         self.post_review_results.lock().unwrap().push(result);
+    }
+
+    pub fn push_set_labels_result(&self, result: Result<(), DomainError>) {
+        self.set_labels_results.lock().unwrap().push(result);
     }
 
     pub fn push_post_draft_result(&self, result: Result<String, DomainError>) {
@@ -341,6 +346,14 @@ impl GerritRepository for MockGerritRepository {
         pop_result!(self.post_review_results)
     }
 
+    async fn set_labels(
+        &self,
+        _change_id: &str,
+        _payload: &ReviewInput,
+    ) -> Result<(), DomainError> {
+        pop_result!(self.set_labels_results)
+    }
+
     async fn post_draft(
         &self,
         _change_id: &str,
@@ -519,5 +532,13 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(result.status, "MERGED");
+    }
+
+    #[tokio::test]
+    async fn mock_set_labels_returns_pushed() {
+        let mock = MockGerritRepository::default();
+        mock.push_set_labels_result(Ok(()));
+        let payload = ReviewInput::default();
+        mock.set_labels("123", &payload).await.unwrap();
     }
 }

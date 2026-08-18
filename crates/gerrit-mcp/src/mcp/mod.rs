@@ -368,6 +368,17 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
     }
 
     #[tool(
+        name = "set_labels",
+        description = "Set one or more label votes on a Gerrit change"
+    )]
+    pub async fn set_labels(
+        &self,
+        Parameters(params): Parameters<SetLabelsParams>,
+    ) -> CallToolResult {
+        changes::set_labels(self, params).await
+    }
+
+    #[tool(
         name = "post_draft_comment",
         description = "Post a draft comment on a Gerrit change"
     )]
@@ -840,5 +851,57 @@ mod tests {
             text.contains("read-only"),
             "expected read-only error for abandon, got: {text}"
         );
+    }
+
+    #[tokio::test]
+    async fn test_set_labels_success() {
+        let mock = MockGerritRepository::default();
+        mock.push_set_labels_result(Ok(()));
+        let server = GerritServer::new(mock);
+        let params = SetLabelsParams {
+            change_id: "123".into(),
+            labels: BTreeMap::from([("READY-FOR-CI".into(), 1)]),
+            message: Some("Trigger".into()),
+            gerrit_base_url: None,
+        };
+        let result = server.set_labels(Parameters(params)).await;
+        let text = extract_text(result);
+        assert!(text.contains("Labels set on change 123: READY-FOR-CI=1"));
+    }
+
+    #[tokio::test]
+    async fn test_set_labels_read_only_blocks() {
+        let mock = MockGerritRepository::default();
+        let server = GerritServer::new(mock).with_read_only(true);
+        let params = SetLabelsParams {
+            change_id: "123".into(),
+            labels: BTreeMap::from([("READY-FOR-CI".into(), 1)]),
+            message: None,
+            gerrit_base_url: Some("https://g.example.com".into()),
+        };
+        let result = server.set_labels(Parameters(params)).await;
+        assert!(result.is_error.unwrap_or(false));
+        let text = extract_text(result);
+        assert!(text.contains("read-only"));
+    }
+
+    #[tokio::test]
+    async fn test_set_labels_error() {
+        let mock = MockGerritRepository::default();
+        mock.push_set_labels_result(Err(DomainError::HttpStatus {
+            status: 403,
+            body: "forbidden".into(),
+        }));
+        let server = GerritServer::new(mock);
+        let params = SetLabelsParams {
+            change_id: "123".into(),
+            labels: BTreeMap::from([("READY-FOR-CI".into(), 1)]),
+            message: None,
+            gerrit_base_url: None,
+        };
+        let result = server.set_labels(Parameters(params)).await;
+        assert!(result.is_error.unwrap_or(false));
+        let text = extract_text(result);
+        assert!(text.contains("Failed to set labels"));
     }
 }
