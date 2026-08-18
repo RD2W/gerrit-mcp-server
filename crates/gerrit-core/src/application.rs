@@ -450,14 +450,18 @@ mod tests {
     async fn set_labels_delegates_to_repo() {
         use std::collections::BTreeMap;
         let mock = MockGerritRepository::default();
-        mock.push_set_labels_result(Ok(()));
+        mock.push_set_labels_result(Err(DomainError::HttpStatus {
+            status: 500,
+            body: "boom".into(),
+        }));
         let svc = GerritService::new(mock);
         let payload = ReviewInput {
             message: Some("m".into()),
             labels: Some(BTreeMap::from([("READY-FOR-CI".into(), 1)])),
             ..ReviewInput::default()
         };
-        svc.set_labels("123", &payload).await.unwrap();
+        let err = svc.set_labels("123", &payload).await.unwrap_err();
+        assert!(matches!(err, DomainError::HttpStatus { status: 500, .. }));
     }
 
     #[tokio::test]
