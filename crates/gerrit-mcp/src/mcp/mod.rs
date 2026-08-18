@@ -592,7 +592,7 @@ mod tests {
             keep_reviewers: None,
             allow_conflicts: None,
             allow_empty: None,
-            gerrit_base_url: "https://g.example.com".to_string(),
+            gerrit_base_url: None,
         };
         let result = server.cherry_pick_change(Parameters(params)).await;
         let text = extract_text(result);
@@ -690,7 +690,7 @@ mod tests {
             keep_reviewers: None,
             allow_conflicts: None,
             allow_empty: None,
-            gerrit_base_url: "https://g.example.com".to_string(),
+            gerrit_base_url: None,
         };
         let result = server.cherry_pick_chain(Parameters(params)).await;
         let text = extract_text(result);
@@ -711,7 +711,7 @@ mod tests {
         let params = SubmitChangeParams {
             change_id: "42".to_string(),
             wait_for_merge: None,
-            gerrit_base_url: "https://g.example.com".to_string(),
+            gerrit_base_url: None,
         };
         let result = server.submit_change(Parameters(params)).await;
         let text = extract_text(result);
@@ -856,7 +856,7 @@ mod tests {
         let params = AbandonChangeParams {
             change_id: "12345".into(),
             message: None,
-            gerrit_base_url: "https://g.example.com".to_string(),
+            gerrit_base_url: None,
         };
         let result = server.abandon_change(Parameters(params)).await;
         assert!(result.is_error.unwrap_or(false));
