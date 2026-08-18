@@ -3,6 +3,8 @@
 
 //! Change querying and management MCP tool implementations.
 
+use std::collections::BTreeMap;
+
 use gerrit_core::domain::*;
 use rmcp::model::CallToolResult;
 
@@ -399,6 +401,40 @@ pub async fn set_topic<R: GerritRepository + Send + Sync + 'static>(
         Ok(Some(_response)) => server.text(format!("Topic set to '{}'.", params.topic)),
         Ok(None) => server.text("Topic deleted (empty response).".to_string()),
         Err(e) => server.error(format!("Failed to set topic: {e}")),
+    }
+}
+
+fn format_labels(labels: &BTreeMap<String, i32>) -> String {
+    labels
+        .iter()
+        .map(|(k, v)| format!("{k}={v}"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+pub async fn set_labels<R: GerritRepository + Send + Sync + 'static>(
+    server: &GerritServer<R>,
+    params: SetLabelsParams,
+) -> CallToolResult {
+    if let Some(r) = server.check_not_readonly("set labels") {
+        return r;
+    }
+    let payload = ReviewInput {
+        message: params.message,
+        labels: Some(params.labels.clone()),
+        comments: None,
+        tag: None,
+        drafts: None,
+        notify: None,
+        omit_duplicate_comments: None,
+    };
+    match server.repo.set_labels(&params.change_id, &payload).await {
+        Ok(()) => server.text(format!(
+            "Labels set on change {}: {}",
+            params.change_id,
+            format_labels(&params.labels)
+        )),
+        Err(e) => server.error(format!("Failed to set labels: {e}")),
     }
 }
 

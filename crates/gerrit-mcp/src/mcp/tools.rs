@@ -473,6 +473,32 @@ pub struct PostReviewCommentParams {
     pub labels: Option<BTreeMap<String, i32>>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[schemars(description = "Set one or more label votes on a Gerrit change")]
+pub struct SetLabelsParams {
+    #[schemars(description = "Gerrit change ID (numeric or Change-Id hash)")]
+    pub change_id: String,
+
+    #[schemars(
+        description = "Vote labels as key-value pairs, e.g. 'READY-FOR-CI': 1, 'CI-CLEAN-BUILD': 1, 'TARGET': 3, 'Code-Review': -1"
+    )]
+    pub labels: BTreeMap<String, i32>,
+
+    #[serde(default)]
+    #[schemars(
+        default,
+        description = "Optional review message recorded with the labels"
+    )]
+    pub message: Option<String>,
+
+    #[serde(default)]
+    #[schemars(
+        default,
+        description = "Base URL of the Gerrit instance (overrides config)"
+    )]
+    pub gerrit_base_url: Option<String>,
+}
+
 /// Parameters for posting a draft comment on a change.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[schemars(description = "Post a draft comment on a Gerrit change")]
@@ -745,6 +771,16 @@ mod tests {
         .unwrap();
         assert_eq!(params.unresolved, Some(true));
         assert_eq!(params.labels, None);
+    }
+
+    #[test]
+    fn set_labels_params_defaults() {
+        let params: SetLabelsParams =
+            serde_json::from_str(r#"{"change_id":"42","labels":{"READY-FOR-CI":1}}"#).unwrap();
+        assert_eq!(params.change_id, "42");
+        assert_eq!(params.labels["READY-FOR-CI"], 1);
+        assert!(params.message.is_none());
+        assert!(params.gerrit_base_url.is_none());
     }
 
     #[test]
