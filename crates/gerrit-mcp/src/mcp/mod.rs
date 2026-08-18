@@ -161,6 +161,20 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         Ok(client)
     }
 
+    #[allow(dead_code)] // used by write-tool handlers in follow-up tasks
+    fn resolve_repo(
+        &self,
+        override_url: Option<&str>,
+    ) -> Result<Arc<dyn GerritRepository>, CallToolResult> {
+        match override_url {
+            Some(url) => match self.resolve_client(Some(url)) {
+                Ok(client) => Ok(client as Arc<dyn GerritRepository>),
+                Err(e) => Err(self.error(format!("Failed to resolve client for {url}: {e}"))),
+            },
+            None => Ok(self.repo.clone() as Arc<dyn GerritRepository>),
+        }
+    }
+
     fn text(&self, text: String) -> CallToolResult {
         metrics().record_tool_call();
         CallToolResult::success(vec![ContentBlock::text(text)])
@@ -903,5 +917,62 @@ mod tests {
         assert!(result.is_error.unwrap_or(false));
         let text = extract_text(result);
         assert!(text.contains("Failed to set labels"));
+    }
+
+    #[tokio::test]
+    async fn test_resolve_repo_none_returns_repo() {
+        let mock = MockGerritRepository::default();
+        mock.push_query_changes_result(Ok(vec![MockGerritRepository::make_change(
+            1,
+            "via helper",
+        )]));
+        let server = GerritServer::new(mock);
+        let repo = server
+            .resolve_repo(None)
+            .expect("resolve_repo(None) should succeed");
+        let changes = repo.query_changes("q", None, &[]).await.unwrap();
+        assert_eq!(changes[0]._number, 1);
+    }
+
+    #[tokio::test]
+    async fn test_resolve_repo_some_without_factory_errors() {
+        let mock = MockGerritRepository::default();
+        let server = GerritServer::new(mock);
+        let err = server
+            .resolve_repo(Some("https://override.example.com"))
+            .err()
+            .expect("resolve_repo(Some) without factory should fail");
+        let text = extract_text(err);
+        assert!(
+            text.contains("client factory not configured"),
+            "got: {text}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_resolve_repo_some_with_bad_client_config_errors() {
+        use gerrit_core::infrastructure::auth::AuthMode;
+        use gerrit_core::infrastructure::client::GerritClientConfig;
+        use gerrit_core::infrastructure::tls::TlsConfig;
+        use std::time::Duration;
+        let mock = MockGerritRepository::default();
+        let cfg = GerritClientConfig {
+            base_url: "https://override.example.com".into(),
+            auth: AuthMode::Bearer("t".into()),
+            timeout: Duration::from_secs(1),
+            tls: TlsConfig {
+                verify_ssl: true,
+                ca_cert: Some("/nonexistent/ca-cert.pem".into()),
+                ca_cert_dir: None,
+            },
+            disable_url_normalization: true,
+        };
+        let server = GerritServer::new(mock).with_client_factory(cfg);
+        let err = server
+            .resolve_repo(Some("https://override.example.com"))
+            .err()
+            .expect("resolve_repo(Some) with factory on bad host should fail");
+        let text = extract_text(err);
+        assert!(text.contains("Failed to resolve client"), "got: {text}");
     }
 }
