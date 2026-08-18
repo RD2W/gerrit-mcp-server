@@ -1096,4 +1096,92 @@ mod tests {
         let text = extract_text(result);
         assert!(text.contains("Failed to resolve client"), "got: {text}");
     }
+
+    #[tokio::test]
+    async fn test_post_review_comment_gerrit_base_url_override_error() {
+        let mock = MockGerritRepository::default();
+        let server = GerritServer::new(mock);
+        let params = PostReviewCommentParams {
+            change_id: "123".into(),
+            file_path: "a.txt".into(),
+            line_number: 1,
+            message: "m".into(),
+            unresolved: None,
+            gerrit_base_url: Some("https://override.example.com".into()),
+            labels: None,
+        };
+        let result = server.post_review_comment(Parameters(params)).await;
+        assert!(result.is_error.unwrap_or(false));
+        let text = extract_text(result);
+        assert!(text.contains("Failed to resolve client"), "got: {text}");
+    }
+
+    #[tokio::test]
+    async fn test_post_draft_comment_gerrit_base_url_override_error() {
+        let mock = MockGerritRepository::default();
+        let server = GerritServer::new(mock);
+        let params = PostDraftCommentParams {
+            change_id: "123".into(),
+            file_path: "a.txt".into(),
+            line_number: 1,
+            message: "m".into(),
+            unresolved: None,
+            gerrit_base_url: Some("https://override.example.com".into()),
+            start_line: None,
+            start_character: None,
+            end_line: None,
+            end_character: None,
+            suggestion: None,
+            in_reply_to: None,
+        };
+        let result = server.post_draft_comment(Parameters(params)).await;
+        assert!(result.is_error.unwrap_or(false));
+        let text = extract_text(result);
+        assert!(text.contains("Failed to resolve client"), "got: {text}");
+    }
+
+    #[tokio::test]
+    async fn test_delete_draft_comment_gerrit_base_url_override_error() {
+        let mock = MockGerritRepository::default();
+        let server = GerritServer::new(mock);
+        let params = DeleteDraftCommentParams {
+            change_id: "123".into(),
+            draft_id: "d1".into(),
+            gerrit_base_url: Some("https://override.example.com".into()),
+        };
+        let result = server.delete_draft_comment(Parameters(params)).await;
+        assert!(result.is_error.unwrap_or(false));
+        let text = extract_text(result);
+        assert!(text.contains("Failed to resolve client"), "got: {text}");
+    }
+
+    #[tokio::test]
+    async fn test_delete_draft_comments_gerrit_base_url_override_error() {
+        let mock = MockGerritRepository::default();
+        let server = GerritServer::new(mock);
+        let params = DeleteDraftCommentsParams {
+            change_id: "123".into(),
+            gerrit_base_url: Some("https://override.example.com".into()),
+        };
+        let result = server.delete_draft_comments(Parameters(params)).await;
+        assert!(result.is_error.unwrap_or(false));
+        let text = extract_text(result);
+        assert!(text.contains("Failed to resolve client"), "got: {text}");
+    }
+
+    #[tokio::test]
+    async fn test_publish_drafts_gerrit_base_url_override_error() {
+        let mock = MockGerritRepository::default();
+        let server = GerritServer::new(mock);
+        let params = PublishDraftsParams {
+            change_id: "123".into(),
+            message: None,
+            labels: None,
+            gerrit_base_url: Some("https://override.example.com".into()),
+        };
+        let result = server.publish_drafts(Parameters(params)).await;
+        assert!(result.is_error.unwrap_or(false));
+        let text = extract_text(result);
+        assert!(text.contains("Failed to resolve client"), "got: {text}");
+    }
 }

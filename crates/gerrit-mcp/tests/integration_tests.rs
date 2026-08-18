@@ -915,7 +915,7 @@ async fn test_post_review_comment_pipeline() {
         line_number: 42,
         message: "Looks good".into(),
         unresolved: None,
-        gerrit_base_url: Some("https://g.example.com".into()),
+        gerrit_base_url: None,
         labels: None,
     };
     let result = server.post_review_comment(Parameters(params)).await;
@@ -936,7 +936,7 @@ async fn test_post_draft_comment_pipeline() {
         line_number: 10,
         message: "Needs work".into(),
         unresolved: None,
-        gerrit_base_url: Some("https://g.example.com".into()),
+        gerrit_base_url: None,
         start_line: None,
         start_character: None,
         end_line: None,
@@ -1028,7 +1028,7 @@ async fn test_publish_drafts_pipeline() {
         change_id: "123".into(),
         message: None,
         labels: None,
-        gerrit_base_url: Some("https://g.example.com".into()),
+        gerrit_base_url: None,
     };
     let result = server.publish_drafts(Parameters(params)).await;
     let text = extract_text(result);
@@ -1045,7 +1045,7 @@ async fn test_delete_draft_comment_pipeline() {
     let params = DeleteDraftCommentParams {
         change_id: "123".into(),
         draft_id: "draft_1".into(),
-        gerrit_base_url: Some("https://g.example.com".into()),
+        gerrit_base_url: None,
     };
     let result = server.delete_draft_comment(Parameters(params)).await;
     let text = extract_text(result);
@@ -1082,7 +1082,7 @@ async fn test_delete_draft_comments_pipeline() {
 
     let params = DeleteDraftCommentsParams {
         change_id: "123".into(),
-        gerrit_base_url: Some("https://g.example.com".into()),
+        gerrit_base_url: None,
     };
     let result = server.delete_draft_comments(Parameters(params)).await;
     let text = extract_text(result);
