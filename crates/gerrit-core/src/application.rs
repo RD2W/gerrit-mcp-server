@@ -232,6 +232,15 @@ impl<R: GerritRepository> GerritRepository for GerritService<R> {
         self.repo.post_review(change_id, payload).await
     }
 
+    async fn set_labels(
+        &self,
+        change_id: &str,
+        payload: &ReviewInput,
+    ) -> Result<(), DomainError> {
+        self.acquire_rate_limit().await?;
+        self.repo.set_labels(change_id, payload).await
+    }
+
     async fn post_draft(
         &self,
         change_id: &str,
@@ -439,6 +448,20 @@ mod tests {
         };
         let result = svc.create_change(&payload).await.unwrap();
         assert_eq!(result._number, 77);
+    }
+
+    #[tokio::test]
+    async fn set_labels_delegates_to_repo() {
+        use std::collections::BTreeMap;
+        let mock = MockGerritRepository::default();
+        mock.push_set_labels_result(Ok(()));
+        let svc = GerritService::new(mock);
+        let payload = ReviewInput {
+            message: Some("m".into()),
+            labels: Some(BTreeMap::from([("READY-FOR-CI".into(), 1)])),
+            ..ReviewInput::default()
+        };
+        svc.set_labels("123", &payload).await.unwrap();
     }
 
     #[tokio::test]
