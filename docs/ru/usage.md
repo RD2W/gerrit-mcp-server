@@ -263,7 +263,7 @@ healthcheck:
 |---|---|---|
 | `add_reviewer` | Добавить ревьюера | `change_id`, `reviewer`, `state?` |
 | `suggest_reviewers` | Предложения ревьюеров | `change_id`, `query`, `limit?`, `exclude_groups?` |
-| `set_labels` | Установить голоса лейблов на изменение | `change_id`, `labels`, `message?`, `gerrit_base_url?` |
+| `set_labels` | Установить голоса меток на изменение | `change_id`, `labels`, `message?`, `gerrit_base_url?` |
 | `post_review_comment` | Опубликовать комментарий ревью | `change_id`, `file_path`, `line_number`, `message`, `unresolved?` |
 | `post_draft_comment` | Опубликовать черновик | `change_id`, `file_path`, `line_number`, `message`, `suggestion?`, `in_reply_to?` |
 | `delete_draft_comment` | Удалить конкретный черновик | `change_id`, `draft_id` |
