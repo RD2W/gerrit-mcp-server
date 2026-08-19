@@ -114,14 +114,14 @@ pub async fn add_reviewer<R: GerritRepository + Send + Sync + 'static>(
     if let Some(r) = server.check_not_readonly("add reviewer") {
         return r;
     }
-    let repo = match server.resolve_repo(params.gerrit_base_url.as_deref()) {
-        Ok(r) => r,
-        Err(e) => return e,
-    };
     let state = params.state.as_deref().unwrap_or(REVIEWER_STATE_REVIEWER);
     if state != REVIEWER_STATE_REVIEWER && state != "CC" {
         return server.error(format!("Invalid state '{}': must be REVIEWER or CC", state));
     }
+    let repo = match server.resolve_repo(params.gerrit_base_url.as_deref()) {
+        Ok(r) => r,
+        Err(e) => return e,
+    };
     let payload = AddReviewerRequest {
         reviewer: params.reviewer,
         confirmed: Some(true),

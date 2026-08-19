@@ -1202,6 +1202,26 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_add_reviewer_invalid_state_reported_before_client_error() {
+        let mock = MockGerritRepository::default();
+        let server = GerritServer::new(mock);
+        let params = AddReviewerParams {
+            change_id: "123".into(),
+            reviewer: "r@example.com".into(),
+            gerrit_base_url: Some("https://g.example.com".into()),
+            state: Some("BOGUS".into()),
+        };
+        let result = server.add_reviewer(Parameters(params)).await;
+        assert!(result.is_error.unwrap_or(false));
+        let text = extract_text(result);
+        assert!(text.contains("Invalid state"), "got: {text}");
+        assert!(
+            !text.contains("Failed to resolve client"),
+            "validation error must be reported before client resolution: got: {text}"
+        );
+    }
+
+    #[tokio::test]
     async fn test_cherry_pick_change_gerrit_base_url_override_error() {
         let mock = MockGerritRepository::default();
         let server = GerritServer::new(mock);
