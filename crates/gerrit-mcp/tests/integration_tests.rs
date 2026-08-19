@@ -382,6 +382,55 @@ async fn test_multi_instance_query_changes() {
     assert!(text.contains("From B"), "expected 'From B' in {text}");
 }
 
+#[tokio::test]
+async fn test_create_change_honors_gerrit_base_url_override() {
+    let server_a = MockServer::start().await;
+    let server_b = MockServer::start().await;
+
+    let change_json = r#"{"id":"proj~main~777","_number":777,"subject":"Created via override","status":"NEW","project":"proj","branch":"main","owner":{"_account_id":1},"updated":"2025-01-01 00:00:00"}"#;
+
+    Mock::given(method("POST"))
+        .and(path("/changes/"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(change_json))
+        .mount(&server_b)
+        .await;
+
+    let default_client = GerritClient::new(GerritClientConfig {
+        base_url: server_a.uri(),
+        auth: AuthMode::Bearer("token".into()),
+        timeout: Duration::from_secs(5),
+        tls: test_tls_config(),
+        disable_url_normalization: true,
+    })
+    .unwrap();
+
+    let factory_config = GerritClientConfig {
+        base_url: String::new(),
+        auth: AuthMode::Bearer("token".into()),
+        timeout: Duration::from_secs(5),
+        tls: test_tls_config(),
+        disable_url_normalization: true,
+    };
+
+    let service = GerritService::new(default_client);
+    let server = GerritServer::new(service).with_client_factory(factory_config);
+
+    let params = CreateChangeParams {
+        project: "proj".into(),
+        subject: "Override subject".into(),
+        branch: "main".into(),
+        topic: None,
+        status: None,
+        gerrit_base_url: Some(server_b.uri()),
+    };
+    let result = server.create_change(Parameters(params)).await;
+    let text = extract_text(result);
+    assert!(
+        text.contains("Created via override"),
+        "expected override-host response in {text}"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // GerritServer full pipeline tests (MockGerritRepository)
 // ---------------------------------------------------------------------------
