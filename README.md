@@ -58,6 +58,9 @@ Pre-built multi-arch images (linux/amd64, linux/arm64) are available on
 # Pull the latest release
 docker pull rd2w/gerrit-mcp:latest
 
+# Or from GitHub Container Registry
+docker pull ghcr.io/rd2w/gerrit-mcp-server:latest
+
 # Use the docker-compose file for pre-built images
 docker compose -f docker-compose.hub.yml up -d
 
@@ -108,15 +111,15 @@ docker compose up -d
 
 See `config/config.example.toml` for all options. Key sections:
 
-| Section | Purpose |
-|---|---|---|
-| `[gerrit]` | Base URL, TLS (CA cert path, verify_ssl), timeout |
+| Section         | Purpose                                                               |
+|-----------------|-----------------------------------------------------------------------|
+| `[gerrit]`      | Base URL, TLS (CA cert path, verify_ssl), timeout                     |
 | `[gerrit.auth]` | Auth mode (`http_basic`/`bearer`/`git_cookies`/`none`), env var names |
-| `[service]` | Default max results |
-| `[cache]` | In-memory TTL + LRU cache for repeated queries |
-| `[rate_limit]` | Token-bucket rate limiter (protects Gerrit) |
-| `[transport]` | Transport mode, bind address, `allowed_hosts`, `mcp_auth_token` |
-| `[log]` | Log level (`RUST_LOG` overrides) |
+| `[service]`     | Default max results                                                   |
+| `[cache]`       | In-memory TTL + LRU cache for repeated queries                        |
+| `[rate_limit]`  | Token-bucket rate limiter (protects Gerrit)                           |
+| `[transport]`   | Transport mode, bind address, `allowed_hosts`, `mcp_auth_token`       |
+| `[log]`         | Log level (`RUST_LOG` overrides)                                      |
 
 #### Streamable HTTP & DNS rebinding protection
 
@@ -214,6 +217,9 @@ docker compose up -d
 # Загрузка последнего релиза
 docker pull rd2w/gerrit-mcp:latest
 
+# Или из GitHub Container Registry
+docker pull ghcr.io/rd2w/gerrit-mcp-server:latest
+
 # Используйте docker-compose файл для готовых образов
 docker compose -f docker-compose.hub.yml up -d
 
@@ -264,15 +270,15 @@ docker compose up -d
 
 Все опции в `config/config.example.toml`. Основные секции:
 
-| Секция | Назначение |
-|---|---|---|
-| `[gerrit]` | Базовый URL, TLS (путь к CA-сертификату, verify_ssl), тайм-аут |
+| Секция          | Назначение                                                                                    |
+|-----------------|-----------------------------------------------------------------------------------------------|
+| `[gerrit]`      | Базовый URL, TLS (путь к CA-сертификату, verify_ssl), тайм-аут                                |
 | `[gerrit.auth]` | Режим аутентификации (`http_basic`/`bearer`/`git_cookies`/`none`), имена переменных окружения |
-| `[service]` | Максимум результатов по умолчанию |
-| `[cache]` | TTL + LRU кэш в памяти для повторных запросов |
-| `[rate_limit]` | Ограничитель частоты token bucket (защищает Gerrit) |
-| `[transport]` | Режим транспорта, адрес, `allowed_hosts`, `mcp_auth_token` |
-| `[log]` | Уровень логирования (переопределяется `RUST_LOG`) |
+| `[service]`     | Максимум результатов по умолчанию                                                             |
+| `[cache]`       | TTL + LRU кэш в памяти для повторных запросов                                                 |
+| `[rate_limit]`  | Ограничитель частоты token bucket (защищает Gerrit)                                           |
+| `[transport]`   | Режим транспорта, адрес, `allowed_hosts`, `mcp_auth_token`                                    |
+| `[log]`         | Уровень логирования (переопределяется `RUST_LOG`)                                             |
 
 #### Streamable HTTP и защита от DNS rebinding
 
