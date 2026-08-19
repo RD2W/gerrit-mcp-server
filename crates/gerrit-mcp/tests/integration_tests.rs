@@ -382,6 +382,55 @@ async fn test_multi_instance_query_changes() {
     assert!(text.contains("From B"), "expected 'From B' in {text}");
 }
 
+#[tokio::test]
+async fn test_create_change_honors_gerrit_base_url_override() {
+    let server_a = MockServer::start().await;
+    let server_b = MockServer::start().await;
+
+    let change_json = r#"{"id":"proj~main~777","_number":777,"subject":"Created via override","status":"NEW","project":"proj","branch":"main","owner":{"_account_id":1},"updated":"2025-01-01 00:00:00"}"#;
+
+    Mock::given(method("POST"))
+        .and(path("/changes/"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(change_json))
+        .mount(&server_b)
+        .await;
+
+    let default_client = GerritClient::new(GerritClientConfig {
+        base_url: server_a.uri(),
+        auth: AuthMode::Bearer("token".into()),
+        timeout: Duration::from_secs(5),
+        tls: test_tls_config(),
+        disable_url_normalization: true,
+    })
+    .unwrap();
+
+    let factory_config = GerritClientConfig {
+        base_url: String::new(),
+        auth: AuthMode::Bearer("token".into()),
+        timeout: Duration::from_secs(5),
+        tls: test_tls_config(),
+        disable_url_normalization: true,
+    };
+
+    let service = GerritService::new(default_client);
+    let server = GerritServer::new(service).with_client_factory(factory_config);
+
+    let params = CreateChangeParams {
+        project: "proj".into(),
+        subject: "Override subject".into(),
+        branch: "main".into(),
+        topic: None,
+        status: None,
+        gerrit_base_url: Some(server_b.uri()),
+    };
+    let result = server.create_change(Parameters(params)).await;
+    let text = extract_text(result);
+    assert!(
+        text.contains("Created via override"),
+        "expected override-host response in {text}"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // GerritServer full pipeline tests (MockGerritRepository)
 // ---------------------------------------------------------------------------
@@ -774,7 +823,7 @@ async fn test_abandon_change_pipeline() {
     let params = AbandonChangeParams {
         change_id: "600".into(),
         message: Some("No longer needed".into()),
-        gerrit_base_url: "https://g.example.com".into(),
+        gerrit_base_url: None,
     };
     let result = server.abandon_change(Parameters(params)).await;
     let text = extract_text(result);
@@ -795,7 +844,7 @@ async fn test_revert_change_pipeline() {
     let params = RevertChangeParams {
         change_id: "700".into(),
         message: None,
-        gerrit_base_url: "https://g.example.com".into(),
+        gerrit_base_url: None,
     };
     let result = server.revert_change(Parameters(params)).await;
     let text = extract_text(result);
@@ -816,7 +865,7 @@ async fn test_revert_submission_pipeline() {
     let params = RevertSubmissionParams {
         change_id: "800".into(),
         message: None,
-        gerrit_base_url: "https://g.example.com".into(),
+        gerrit_base_url: None,
     };
     let result = server.revert_submission(Parameters(params)).await;
     let text = extract_text(result);
@@ -844,7 +893,7 @@ async fn test_cherry_pick_change_pipeline() {
         keep_reviewers: None,
         allow_conflicts: None,
         allow_empty: None,
-        gerrit_base_url: "https://g.example.com".into(),
+        gerrit_base_url: None,
     };
     let result = server.cherry_pick_change(Parameters(params)).await;
     let text = extract_text(result);
@@ -867,7 +916,7 @@ async fn test_submit_change_pipeline() {
     let params = SubmitChangeParams {
         change_id: "42".into(),
         wait_for_merge: None,
-        gerrit_base_url: "https://g.example.com".into(),
+        gerrit_base_url: None,
     };
     let result = server.submit_change(Parameters(params)).await;
     let text = extract_text(result);
@@ -915,7 +964,7 @@ async fn test_post_review_comment_pipeline() {
         line_number: 42,
         message: "Looks good".into(),
         unresolved: None,
-        gerrit_base_url: "https://g.example.com".into(),
+        gerrit_base_url: None,
         labels: None,
     };
     let result = server.post_review_comment(Parameters(params)).await;
@@ -936,7 +985,7 @@ async fn test_post_draft_comment_pipeline() {
         line_number: 10,
         message: "Needs work".into(),
         unresolved: None,
-        gerrit_base_url: "https://g.example.com".into(),
+        gerrit_base_url: None,
         start_line: None,
         start_character: None,
         end_line: None,
@@ -960,7 +1009,7 @@ async fn test_set_topic_pipeline() {
     let params = SetTopicParams {
         change_id: "123".into(),
         topic: "my-topic".into(),
-        gerrit_base_url: "https://g.example.com".into(),
+        gerrit_base_url: None,
     };
     let result = server.set_topic(Parameters(params)).await;
     let text = extract_text(result);
@@ -977,7 +1026,7 @@ async fn test_set_topic_delete() {
     let params = SetTopicParams {
         change_id: "123".into(),
         topic: "".into(),
-        gerrit_base_url: "https://g.example.com".into(),
+        gerrit_base_url: None,
     };
     let result = server.set_topic(Parameters(params)).await;
     let text = extract_text(result);
@@ -993,7 +1042,7 @@ async fn test_set_ready_pipeline() {
 
     let params = SetReadyParams {
         change_id: "123".into(),
-        gerrit_base_url: "https://g.example.com".into(),
+        gerrit_base_url: None,
     };
     let result = server.set_ready_for_review(Parameters(params)).await;
     let text = extract_text(result);
@@ -1010,7 +1059,7 @@ async fn test_set_wip_pipeline() {
     let params = SetWipParams {
         change_id: "123".into(),
         message: Some("Still working on it".into()),
-        gerrit_base_url: "https://g.example.com".into(),
+        gerrit_base_url: None,
     };
     let result = server.set_work_in_progress(Parameters(params)).await;
     let text = extract_text(result);
@@ -1028,7 +1077,7 @@ async fn test_publish_drafts_pipeline() {
         change_id: "123".into(),
         message: None,
         labels: None,
-        gerrit_base_url: "https://g.example.com".into(),
+        gerrit_base_url: None,
     };
     let result = server.publish_drafts(Parameters(params)).await;
     let text = extract_text(result);
@@ -1045,7 +1094,7 @@ async fn test_delete_draft_comment_pipeline() {
     let params = DeleteDraftCommentParams {
         change_id: "123".into(),
         draft_id: "draft_1".into(),
-        gerrit_base_url: "https://g.example.com".into(),
+        gerrit_base_url: None,
     };
     let result = server.delete_draft_comment(Parameters(params)).await;
     let text = extract_text(result);
@@ -1082,7 +1131,7 @@ async fn test_delete_draft_comments_pipeline() {
 
     let params = DeleteDraftCommentsParams {
         change_id: "123".into(),
-        gerrit_base_url: "https://g.example.com".into(),
+        gerrit_base_url: None,
     };
     let result = server.delete_draft_comments(Parameters(params)).await;
     let text = extract_text(result);
@@ -1175,7 +1224,7 @@ async fn test_cherry_pick_chain_pipeline() {
         keep_reviewers: None,
         allow_conflicts: None,
         allow_empty: None,
-        gerrit_base_url: "https://g.example.com".into(),
+        gerrit_base_url: None,
     };
     let result = server.cherry_pick_chain(Parameters(params)).await;
     let text = extract_text(result);
@@ -1248,7 +1297,7 @@ async fn test_cherry_pick_chain_partial_failure() {
         keep_reviewers: None,
         allow_conflicts: None,
         allow_empty: None,
-        gerrit_base_url: "https://g.example.com".into(),
+        gerrit_base_url: None,
     };
     let result = server.cherry_pick_chain(Parameters(params)).await;
     let text = extract_text(result);

@@ -358,8 +358,12 @@ pub struct SetReadyParams {
     #[schemars(description = "Gerrit change ID (numeric or Change-Id hash)")]
     pub change_id: String,
 
-    #[schemars(description = "Base URL of the Gerrit instance (overrides config)")]
-    pub gerrit_base_url: String,
+    #[serde(default)]
+    #[schemars(
+        default,
+        description = "Base URL of the Gerrit instance (overrides config)"
+    )]
+    pub gerrit_base_url: Option<String>,
 }
 
 /// Parameters for setting a change as work-in-progress.
@@ -376,8 +380,12 @@ pub struct SetWipParams {
     )]
     pub message: Option<String>,
 
-    #[schemars(description = "Base URL of the Gerrit instance (overrides config)")]
-    pub gerrit_base_url: String,
+    #[serde(default)]
+    #[schemars(
+        default,
+        description = "Base URL of the Gerrit instance (overrides config)"
+    )]
+    pub gerrit_base_url: Option<String>,
 }
 
 /// Parameters for setting the topic of a change.
@@ -390,8 +398,12 @@ pub struct SetTopicParams {
     #[schemars(description = "Topic to set on the change")]
     pub topic: String,
 
-    #[schemars(description = "Base URL of the Gerrit instance (overrides config)")]
-    pub gerrit_base_url: String,
+    #[serde(default)]
+    #[schemars(
+        default,
+        description = "Base URL of the Gerrit instance (overrides config)"
+    )]
+    pub gerrit_base_url: Option<String>,
 }
 
 /// Parameters for abandoning a change.
@@ -408,8 +420,12 @@ pub struct AbandonChangeParams {
     )]
     pub message: Option<String>,
 
-    #[schemars(description = "Base URL of the Gerrit instance (overrides config)")]
-    pub gerrit_base_url: String,
+    #[serde(default)]
+    #[schemars(
+        default,
+        description = "Base URL of the Gerrit instance (overrides config)"
+    )]
+    pub gerrit_base_url: Option<String>,
 }
 
 /// Parameters for reverting a change.
@@ -423,8 +439,12 @@ pub struct RevertChangeParams {
     #[schemars(default, description = "Optional message for the revert commit")]
     pub message: Option<String>,
 
-    #[schemars(description = "Base URL of the Gerrit instance (overrides config)")]
-    pub gerrit_base_url: String,
+    #[serde(default)]
+    #[schemars(
+        default,
+        description = "Base URL of the Gerrit instance (overrides config)"
+    )]
+    pub gerrit_base_url: Option<String>,
 }
 
 /// Parameters for reverting a submission.
@@ -438,8 +458,12 @@ pub struct RevertSubmissionParams {
     #[schemars(default, description = "Optional message for the revert submission")]
     pub message: Option<String>,
 
-    #[schemars(description = "Base URL of the Gerrit instance (overrides config)")]
-    pub gerrit_base_url: String,
+    #[serde(default)]
+    #[schemars(
+        default,
+        description = "Base URL of the Gerrit instance (overrides config)"
+    )]
+    pub gerrit_base_url: Option<String>,
 }
 
 /// Parameters for posting a review comment on a change.
@@ -462,8 +486,12 @@ pub struct PostReviewCommentParams {
     #[schemars(default, description = "Whether the comment is unresolved")]
     pub unresolved: Option<bool>,
 
-    #[schemars(description = "Base URL of the Gerrit instance (overrides config)")]
-    pub gerrit_base_url: String,
+    #[serde(default)]
+    #[schemars(
+        default,
+        description = "Base URL of the Gerrit instance (overrides config)"
+    )]
+    pub gerrit_base_url: Option<String>,
 
     #[serde(default)]
     #[schemars(
@@ -471,6 +499,32 @@ pub struct PostReviewCommentParams {
         description = "Vote labels as key-value pairs (e.g. 'Code-Review': 1)"
     )]
     pub labels: Option<BTreeMap<String, i32>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[schemars(description = "Set one or more label votes on a Gerrit change")]
+pub struct SetLabelsParams {
+    #[schemars(description = "Gerrit change ID (numeric or Change-Id hash)")]
+    pub change_id: String,
+
+    #[schemars(
+        description = "Vote labels as key-value pairs, e.g. 'READY-FOR-CI': 1, 'CI-CLEAN-BUILD': 1, 'TARGET': 3, 'Code-Review': -1"
+    )]
+    pub labels: BTreeMap<String, i32>,
+
+    #[serde(default)]
+    #[schemars(
+        default,
+        description = "Optional review message recorded with the labels"
+    )]
+    pub message: Option<String>,
+
+    #[serde(default)]
+    #[schemars(
+        default,
+        description = "Base URL of the Gerrit instance (overrides config)"
+    )]
+    pub gerrit_base_url: Option<String>,
 }
 
 /// Parameters for posting a draft comment on a change.
@@ -493,8 +547,12 @@ pub struct PostDraftCommentParams {
     #[schemars(default, description = "Whether the comment is unresolved")]
     pub unresolved: Option<bool>,
 
-    #[schemars(description = "Base URL of the Gerrit instance (overrides config)")]
-    pub gerrit_base_url: String,
+    #[serde(default)]
+    #[schemars(
+        default,
+        description = "Base URL of the Gerrit instance (overrides config)"
+    )]
+    pub gerrit_base_url: Option<String>,
 
     #[serde(default)]
     #[schemars(default, description = "Start line for a range comment")]
@@ -531,8 +589,12 @@ pub struct DeleteDraftCommentParams {
     #[schemars(description = "Draft comment ID to delete")]
     pub draft_id: String,
 
-    #[schemars(description = "Base URL of the Gerrit instance (overrides config)")]
-    pub gerrit_base_url: String,
+    #[serde(default)]
+    #[schemars(
+        default,
+        description = "Base URL of the Gerrit instance (overrides config)"
+    )]
+    pub gerrit_base_url: Option<String>,
 }
 
 /// Parameters for deleting all draft comments on a change.
@@ -542,8 +604,12 @@ pub struct DeleteDraftCommentsParams {
     #[schemars(description = "Gerrit change ID (numeric or Change-Id hash)")]
     pub change_id: String,
 
-    #[schemars(description = "Base URL of the Gerrit instance (overrides config)")]
-    pub gerrit_base_url: String,
+    #[serde(default)]
+    #[schemars(
+        default,
+        description = "Base URL of the Gerrit instance (overrides config)"
+    )]
+    pub gerrit_base_url: Option<String>,
 }
 
 /// Parameters for publishing draft comments and optionally submitting votes.
@@ -561,8 +627,12 @@ pub struct PublishDraftsParams {
     #[schemars(default, description = "Vote labels as key-value pairs")]
     pub labels: Option<BTreeMap<String, i32>>,
 
-    #[schemars(description = "Base URL of the Gerrit instance (overrides config)")]
-    pub gerrit_base_url: String,
+    #[serde(default)]
+    #[schemars(
+        default,
+        description = "Base URL of the Gerrit instance (overrides config)"
+    )]
+    pub gerrit_base_url: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -602,8 +672,12 @@ pub struct CherryPickChangeParams {
     #[schemars(default, description = "Whether to allow an empty cherry-pick")]
     pub allow_empty: Option<bool>,
 
-    #[schemars(description = "Base URL of the Gerrit instance (overrides config)")]
-    pub gerrit_base_url: String,
+    #[serde(default)]
+    #[schemars(
+        default,
+        description = "Base URL of the Gerrit instance (overrides config)"
+    )]
+    pub gerrit_base_url: Option<String>,
 }
 
 /// Parameters for cherry-picking a chain of changes.
@@ -635,8 +709,12 @@ pub struct CherryPickChainParams {
     #[schemars(default, description = "Whether to allow an empty cherry-pick")]
     pub allow_empty: Option<bool>,
 
-    #[schemars(description = "Base URL of the Gerrit instance (overrides config)")]
-    pub gerrit_base_url: String,
+    #[serde(default)]
+    #[schemars(
+        default,
+        description = "Base URL of the Gerrit instance (overrides config)"
+    )]
+    pub gerrit_base_url: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -654,8 +732,12 @@ pub struct SubmitChangeParams {
     #[schemars(default, description = "Whether to wait for the merge to complete")]
     pub wait_for_merge: Option<bool>,
 
-    #[schemars(description = "Base URL of the Gerrit instance (overrides config)")]
-    pub gerrit_base_url: String,
+    #[serde(default)]
+    #[schemars(
+        default,
+        description = "Base URL of the Gerrit instance (overrides config)"
+    )]
+    pub gerrit_base_url: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -701,7 +783,10 @@ mod tests {
         .unwrap();
         assert_eq!(params.change_id, "12345");
         assert_eq!(params.wait_for_merge, Some(false));
-        assert_eq!(params.gerrit_base_url, "https://gerrit.example.com");
+        assert_eq!(
+            params.gerrit_base_url,
+            Some("https://gerrit.example.com".to_string())
+        );
     }
 
     #[test]
@@ -745,6 +830,16 @@ mod tests {
         .unwrap();
         assert_eq!(params.unresolved, Some(true));
         assert_eq!(params.labels, None);
+    }
+
+    #[test]
+    fn set_labels_params_defaults() {
+        let params: SetLabelsParams =
+            serde_json::from_str(r#"{"change_id":"42","labels":{"READY-FOR-CI":1}}"#).unwrap();
+        assert_eq!(params.change_id, "42");
+        assert_eq!(params.labels["READY-FOR-CI"], 1);
+        assert!(params.message.is_none());
+        assert!(params.gerrit_base_url.is_none());
     }
 
     #[test]

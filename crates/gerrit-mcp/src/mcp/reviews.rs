@@ -17,14 +17,11 @@ pub async fn list_change_files<R: GerritRepository + Send + Sync + 'static>(
     server: &GerritServer<R>,
     params: ListChangeFilesParams,
 ) -> CallToolResult {
-    let result = if let Some(ref url) = params.gerrit_base_url {
-        match server.resolve_client(Some(url)) {
-            Ok(client) => client.list_files(&params.change_id).await,
-            Err(e) => return server.error(e),
-        }
-    } else {
-        server.repo.list_files(&params.change_id).await
+    let repo = match server.resolve_repo(params.gerrit_base_url.as_deref()) {
+        Ok(r) => r,
+        Err(e) => return e,
     };
+    let result = repo.list_files(&params.change_id).await;
     match result {
         Ok(files) => {
             let mut lines = Vec::new();
@@ -59,17 +56,11 @@ pub async fn get_file_diff<R: GerritRepository + Send + Sync + 'static>(
     server: &GerritServer<R>,
     params: GetFileDiffParams,
 ) -> CallToolResult {
-    let result = if let Some(ref url) = params.gerrit_base_url {
-        match server.resolve_client(Some(url)) {
-            Ok(client) => client.get_diff(&params.change_id, &params.file_path).await,
-            Err(e) => return server.error(e),
-        }
-    } else {
-        server
-            .repo
-            .get_diff(&params.change_id, &params.file_path)
-            .await
+    let repo = match server.resolve_repo(params.gerrit_base_url.as_deref()) {
+        Ok(r) => r,
+        Err(e) => return e,
     };
+    let result = repo.get_diff(&params.change_id, &params.file_path).await;
     match result {
         Ok(text) => server.text(text),
         Err(e) => server.error(format!("Failed to get file diff: {e}")),
@@ -81,33 +72,19 @@ pub async fn suggest_reviewers<R: GerritRepository + Send + Sync + 'static>(
     params: SuggestReviewersParams,
 ) -> CallToolResult {
     let exclude_groups = params.exclude_groups.unwrap_or(false);
-    let result = if let Some(ref url) = params.gerrit_base_url {
-        match server.resolve_client(Some(url)) {
-            Ok(client) => {
-                client
-                    .suggest_reviewers(
-                        &params.change_id,
-                        &params.query,
-                        params.limit,
-                        exclude_groups,
-                        params.reviewer_state.as_deref(),
-                    )
-                    .await
-            }
-            Err(e) => return server.error(e),
-        }
-    } else {
-        server
-            .repo
-            .suggest_reviewers(
-                &params.change_id,
-                &params.query,
-                params.limit,
-                exclude_groups,
-                params.reviewer_state.as_deref(),
-            )
-            .await
+    let repo = match server.resolve_repo(params.gerrit_base_url.as_deref()) {
+        Ok(r) => r,
+        Err(e) => return e,
     };
+    let result = repo
+        .suggest_reviewers(
+            &params.change_id,
+            &params.query,
+            params.limit,
+            exclude_groups,
+            params.reviewer_state.as_deref(),
+        )
+        .await;
     match result {
         Ok(suggestions) => {
             if suggestions.is_empty() {
@@ -141,13 +118,17 @@ pub async fn add_reviewer<R: GerritRepository + Send + Sync + 'static>(
     if state != REVIEWER_STATE_REVIEWER && state != "CC" {
         return server.error(format!("Invalid state '{}': must be REVIEWER or CC", state));
     }
+    let repo = match server.resolve_repo(params.gerrit_base_url.as_deref()) {
+        Ok(r) => r,
+        Err(e) => return e,
+    };
     let payload = AddReviewerRequest {
         reviewer: params.reviewer,
         confirmed: Some(true),
         state: Some(state.to_string()),
         notify: None,
     };
-    match server.repo.add_reviewer(&params.change_id, &payload).await {
+    match repo.add_reviewer(&params.change_id, &payload).await {
         Ok(result) => {
             if let Some(ref err_msg) = result.error {
                 return server.error(format!("Failed to add reviewer: {}", err_msg));
@@ -171,6 +152,10 @@ pub async fn cherry_pick_change<R: GerritRepository + Send + Sync + 'static>(
     if let Some(r) = server.check_not_readonly("cherry-pick change") {
         return r;
     }
+    let repo = match server.resolve_repo(params.gerrit_base_url.as_deref()) {
+        Ok(r) => r,
+        Err(e) => return e,
+    };
     let revision = params.revision_id.as_deref().unwrap_or(DEFAULT_REVISION);
     let payload = CherryPickRequest {
         message: params.message,
@@ -179,8 +164,7 @@ pub async fn cherry_pick_change<R: GerritRepository + Send + Sync + 'static>(
         base: None,
         notify: None,
     };
-    match server
-        .repo
+    match repo
         .cherry_pick(&params.change_id, revision, &payload)
         .await
     {
@@ -199,9 +183,13 @@ pub async fn cherry_pick_chain<R: GerritRepository + Send + Sync + 'static>(
     if let Some(r) = server.check_not_readonly("cherry-pick chain") {
         return r;
     }
+    let repo = match server.resolve_repo(params.gerrit_base_url.as_deref()) {
+        Ok(r) => r,
+        Err(e) => return e,
+    };
     let revision = params.revision_id.as_deref().unwrap_or(DEFAULT_REVISION);
 
-    let related = match server.repo.get_related(&params.change_id, revision).await {
+    let related = match repo.get_related(&params.change_id, revision).await {
         Ok(r) => r,
         Err(e) => return server.error(format!("Failed to get related changes: {e}")),
     };
@@ -226,8 +214,7 @@ pub async fn cherry_pick_chain<R: GerritRepository + Send + Sync + 'static>(
         let change_id_str = rc._change_number.to_string();
         let revision_str = rc._revision_number.to_string();
 
-        match server
-            .repo
+        match repo
             .cherry_pick(&change_id_str, &revision_str, &cp_payload)
             .await
         {
@@ -243,7 +230,7 @@ pub async fn cherry_pick_chain<R: GerritRepository + Send + Sync + 'static>(
                     GERRIT_OPTION_CURRENT_REVISION.to_string(),
                     GERRIT_OPTION_CURRENT_COMMIT.to_string(),
                 ];
-                match server.repo.get_change_detail(&new_id, &base_opts).await {
+                match repo.get_change_detail(&new_id, &base_opts).await {
                     Ok(detail) => {
                         if let Some(ref rev_key) = detail.current_revision
                             && let Some(rev_info) = detail.revisions.get(rev_key)

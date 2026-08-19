@@ -3,6 +3,8 @@
 
 //! Change querying and management MCP tool implementations.
 
+use std::collections::BTreeMap;
+
 use gerrit_core::domain::*;
 use rmcp::model::CallToolResult;
 
@@ -22,21 +24,11 @@ pub async fn query_changes<R: GerritRepository + Send + Sync + 'static>(
     let opts = params.options.unwrap_or_default();
     metrics().record_query();
 
-    let result = if let Some(ref url) = params.gerrit_base_url {
-        match server.resolve_client(Some(url)) {
-            Ok(client) => {
-                client
-                    .query_changes(&params.query, params.limit, &opts)
-                    .await
-            }
-            Err(e) => return server.error(e),
-        }
-    } else {
-        server
-            .repo
-            .query_changes(&params.query, params.limit, &opts)
-            .await
+    let repo = match server.resolve_repo(params.gerrit_base_url.as_deref()) {
+        Ok(r) => r,
+        Err(e) => return e,
     };
+    let result = repo.query_changes(&params.query, params.limit, &opts).await;
 
     match result {
         Ok(mut changes) => {
@@ -79,14 +71,11 @@ pub async fn query_changes_by_date_and_filters<R: GerritRepository + Send + Sync
 
     let opts = Vec::new();
     metrics().record_query();
-    let result = if let Some(ref url) = params.gerrit_base_url {
-        match server.resolve_client(Some(url)) {
-            Ok(client) => client.query_changes(&query, params.limit, &opts).await,
-            Err(e) => return server.error(e),
-        }
-    } else {
-        server.repo.query_changes(&query, params.limit, &opts).await
+    let repo = match server.resolve_repo(params.gerrit_base_url.as_deref()) {
+        Ok(r) => r,
+        Err(e) => return e,
     };
+    let result = repo.query_changes(&query, params.limit, &opts).await;
     match result {
         Ok(mut changes) => {
             if changes.is_empty() {
@@ -111,17 +100,11 @@ pub async fn get_change_details<R: GerritRepository + Send + Sync + 'static>(
     let extra = params.options.unwrap_or_default();
     let opts = GerritServer::<R>::merge_options(base, &extra);
 
-    let result = if let Some(ref url) = params.gerrit_base_url {
-        match server.resolve_client(Some(url)) {
-            Ok(client) => client.get_change_detail(&params.change_id, &opts).await,
-            Err(e) => return server.error(e),
-        }
-    } else {
-        server
-            .repo
-            .get_change_detail(&params.change_id, &opts)
-            .await
+    let repo = match server.resolve_repo(params.gerrit_base_url.as_deref()) {
+        Ok(r) => r,
+        Err(e) => return e,
     };
+    let result = repo.get_change_detail(&params.change_id, &opts).await;
     match result {
         Ok(detail) => {
             let mut lines = Vec::new();
@@ -192,14 +175,11 @@ pub async fn get_commit_message<R: GerritRepository + Send + Sync + 'static>(
     server: &GerritServer<R>,
     params: GetCommitMessageParams,
 ) -> CallToolResult {
-    let result = if let Some(ref url) = params.gerrit_base_url {
-        match server.resolve_client(Some(url)) {
-            Ok(client) => client.get_commit_message(&params.change_id).await,
-            Err(e) => return server.error(e),
-        }
-    } else {
-        server.repo.get_commit_message(&params.change_id).await
+    let repo = match server.resolve_repo(params.gerrit_base_url.as_deref()) {
+        Ok(r) => r,
+        Err(e) => return e,
     };
+    let result = repo.get_commit_message(&params.change_id).await;
     match result {
         Ok(msg) => {
             let mut lines = Vec::new();
@@ -235,14 +215,11 @@ pub async fn get_most_recent_cl<R: GerritRepository + Send + Sync + 'static>(
     params: GetMostRecentClParams,
 ) -> CallToolResult {
     let query = format!("owner:{}", params.user);
-    let result = if let Some(ref url) = params.gerrit_base_url {
-        match server.resolve_client(Some(url)) {
-            Ok(client) => client.query_changes(&query, Some(1), &[]).await,
-            Err(e) => return server.error(e),
-        }
-    } else {
-        server.repo.query_changes(&query, Some(1), &[]).await
+    let repo = match server.resolve_repo(params.gerrit_base_url.as_deref()) {
+        Ok(r) => r,
+        Err(e) => return e,
     };
+    let result = repo.query_changes(&query, Some(1), &[]).await;
     match result {
         Ok(changes) => {
             if changes.is_empty() {
@@ -260,14 +237,11 @@ pub async fn get_bugs_from_cl<R: GerritRepository + Send + Sync + 'static>(
     server: &GerritServer<R>,
     params: GetBugsFromClParams,
 ) -> CallToolResult {
-    let result = if let Some(ref url) = params.gerrit_base_url {
-        match server.resolve_client(Some(url)) {
-            Ok(client) => client.get_commit(&params.change_id).await,
-            Err(e) => return server.error(e),
-        }
-    } else {
-        server.repo.get_commit(&params.change_id).await
+    let repo = match server.resolve_repo(params.gerrit_base_url.as_deref()) {
+        Ok(r) => r,
+        Err(e) => return e,
     };
+    let result = repo.get_commit(&params.change_id).await;
     match result {
         Ok(commit) => {
             let bugs = extract_bugs(&commit.message);
@@ -286,21 +260,13 @@ pub async fn changes_submitted_together<R: GerritRepository + Send + Sync + 'sta
     params: ChangesSubmittedTogetherParams,
 ) -> CallToolResult {
     let extra = params.options.unwrap_or_default();
-    let result = if let Some(ref url) = params.gerrit_base_url {
-        match server.resolve_client(Some(url)) {
-            Ok(client) => {
-                client
-                    .changes_submitted_together(&params.change_id, &extra)
-                    .await
-            }
-            Err(e) => return server.error(e),
-        }
-    } else {
-        server
-            .repo
-            .changes_submitted_together(&params.change_id, &extra)
-            .await
+    let repo = match server.resolve_repo(params.gerrit_base_url.as_deref()) {
+        Ok(r) => r,
+        Err(e) => return e,
     };
+    let result = repo
+        .changes_submitted_together(&params.change_id, &extra)
+        .await;
     match result {
         Ok(submitted) => {
             let mut lines = Vec::new();
@@ -341,7 +307,11 @@ pub async fn create_change<R: GerritRepository + Send + Sync + 'static>(
         base_change: None,
         new_branch: None,
     };
-    match server.repo.create_change(&payload).await {
+    let repo = match server.resolve_repo(params.gerrit_base_url.as_deref()) {
+        Ok(r) => r,
+        Err(e) => return e,
+    };
+    match repo.create_change(&payload).await {
         Ok(change) => server.text(format!(
             "Created change {}_{}: {}",
             change._number, change.updated, change.subject
@@ -357,7 +327,11 @@ pub async fn set_ready_for_review<R: GerritRepository + Send + Sync + 'static>(
     if let Some(r) = server.check_not_readonly("set ready for review") {
         return r;
     }
-    match server.repo.set_ready(&params.change_id).await {
+    let repo = match server.resolve_repo(params.gerrit_base_url.as_deref()) {
+        Ok(r) => r,
+        Err(e) => return e,
+    };
+    match repo.set_ready(&params.change_id).await {
         Ok(()) => server.text(format!(
             "Change {} marked as ready for review.",
             params.change_id
@@ -376,7 +350,11 @@ pub async fn set_work_in_progress<R: GerritRepository + Send + Sync + 'static>(
     let payload = WipRequest {
         message: params.message,
     };
-    match server.repo.set_wip(&params.change_id, &payload).await {
+    let repo = match server.resolve_repo(params.gerrit_base_url.as_deref()) {
+        Ok(r) => r,
+        Err(e) => return e,
+    };
+    match repo.set_wip(&params.change_id, &payload).await {
         Ok(()) => server.text(format!(
             "Change {} marked as work-in-progress.",
             params.change_id
@@ -395,10 +373,54 @@ pub async fn set_topic<R: GerritRepository + Send + Sync + 'static>(
     let payload = TopicRequest {
         topic: params.topic.clone(),
     };
-    match server.repo.set_topic(&params.change_id, &payload).await {
+    let repo = match server.resolve_repo(params.gerrit_base_url.as_deref()) {
+        Ok(r) => r,
+        Err(e) => return e,
+    };
+    match repo.set_topic(&params.change_id, &payload).await {
         Ok(Some(_response)) => server.text(format!("Topic set to '{}'.", params.topic)),
         Ok(None) => server.text("Topic deleted (empty response).".to_string()),
         Err(e) => server.error(format!("Failed to set topic: {e}")),
+    }
+}
+
+fn format_labels(labels: &BTreeMap<String, i32>) -> String {
+    labels
+        .iter()
+        .map(|(k, v)| format!("{k}={v}"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+pub async fn set_labels<R: GerritRepository + Send + Sync + 'static>(
+    server: &GerritServer<R>,
+    params: SetLabelsParams,
+) -> CallToolResult {
+    if let Some(r) = server.check_not_readonly("set labels") {
+        return r;
+    }
+    let payload = ReviewInput {
+        message: params.message,
+        labels: Some(params.labels.clone()),
+        comments: None,
+        tag: None,
+        drafts: None,
+        notify: None,
+        omit_duplicate_comments: None,
+    };
+    let repo = match server.resolve_repo(params.gerrit_base_url.as_deref()) {
+        Ok(r) => r,
+        Err(e) => return e,
+    };
+    let result = repo.set_labels(&params.change_id, &payload).await;
+
+    match result {
+        Ok(()) => server.text(format!(
+            "Labels set on change {}: {}",
+            params.change_id,
+            format_labels(&params.labels)
+        )),
+        Err(e) => server.error(format!("Failed to set labels: {e}")),
     }
 }
 
@@ -413,11 +435,11 @@ pub async fn abandon_change<R: GerritRepository + Send + Sync + 'static>(
         message: params.message,
         notify: None,
     };
-    match server
-        .repo
-        .abandon_change(&params.change_id, &payload)
-        .await
-    {
+    let repo = match server.resolve_repo(params.gerrit_base_url.as_deref()) {
+        Ok(r) => r,
+        Err(e) => return e,
+    };
+    match repo.abandon_change(&params.change_id, &payload).await {
         Ok(change) => server.text(format!(
             "Change {} abandoned: {}",
             change._number, change.subject
@@ -433,8 +455,11 @@ pub async fn revert_change<R: GerritRepository + Send + Sync + 'static>(
     if let Some(r) = server.check_not_readonly("revert change") {
         return r;
     }
-    match server
-        .repo
+    let repo = match server.resolve_repo(params.gerrit_base_url.as_deref()) {
+        Ok(r) => r,
+        Err(e) => return e,
+    };
+    match repo
         .revert_change(&params.change_id, params.message.as_deref())
         .await
     {
@@ -453,8 +478,11 @@ pub async fn revert_submission<R: GerritRepository + Send + Sync + 'static>(
     if let Some(r) = server.check_not_readonly("revert submission") {
         return r;
     }
-    match server
-        .repo
+    let repo = match server.resolve_repo(params.gerrit_base_url.as_deref()) {
+        Ok(r) => r,
+        Err(e) => return e,
+    };
+    match repo
         .revert_submission(&params.change_id, params.message.as_deref())
         .await
     {
@@ -485,7 +513,11 @@ pub async fn submit_change<R: GerritRepository + Send + Sync + 'static>(
         on_behalf_of: None,
         notify: None,
     };
-    match server.repo.submit_change(&params.change_id, &payload).await {
+    let repo = match server.resolve_repo(params.gerrit_base_url.as_deref()) {
+        Ok(r) => r,
+        Err(e) => return e,
+    };
+    match repo.submit_change(&params.change_id, &payload).await {
         Ok(result) => server.text(format!(
             "Successfully submitted change {}: status={}",
             result._number, result.status

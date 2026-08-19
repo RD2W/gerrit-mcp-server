@@ -4,7 +4,36 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to
 follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.3.0] — 2026-08-19
+
+### Added
+
+- **`set_labels` tool** — set one or more label votes (e.g. `READY-FOR-CI: 1`,
+  `TARGET: 3`) in a single `POST /changes/{id}/revisions/current/review` call,
+  with an optional review `message` and no inline comment.
+
+### Changed
+
+- **rmcp upgraded to 3.1.3** (was 3.1.2) — client-side OAuth fixes (query-param
+  resource matching, issuer state retention, discovery probe timeout).
+- **Updated dependencies** to latest semver-compatible versions (h2, quinn-proto,
+  rustls-webpki, uuid, futures, icu, etc.).
+
+### Fixed
+
+- **`gerrit_base_url` override now works on all write tools** — `create_change`,
+  `set_ready_for_review`, `set_work_in_progress`, `set_topic`, `abandon_change`,
+  `revert_change`, `revert_submission`, `submit_change`, `post_review_comment`,
+  `post_draft_comment`, `delete_draft_comment`, `delete_draft_comments`,
+  `publish_drafts`, `add_reviewer`, `cherry_pick_change`, and `cherry_pick_chain`
+  now honor the `gerrit_base_url` parameter (previously declared but silently
+  ignored). The parameter is now optional (`None` = configured server) on these
+  tools, matching the read tools. All MCP tools now resolve the target server
+  through a shared `resolve_repo` helper.
+- **Container health restored** — `/healthz`, `/readyz`, `/metrics` are now public
+  (token auth applies only to `/mcp`), and the Docker healthcheck resolves
+  `127.0.0.1:${HEALTHCHECK_PORT}${HEALTHCHECK_PATH}` via runtime `ENV` vars
+  (previously unset `ARG`s made the container report `unhealthy`).
 
 ## [1.2.0] — 2026-08-10
 
