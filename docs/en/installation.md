@@ -79,6 +79,13 @@ The server starts in stdio mode by default, ready for MCP clients.
 docker compose up -d
 ```
 
+> **Note:** the container healthcheck probes `127.0.0.1:${HEALTHCHECK_PORT}${HEALTHCHECK_PATH}`
+> (default `8080/healthz`) *inside* the container. If you change the server
+> `bind_addr` port in the config, override `HEALTHCHECK_PORT` (and
+> `HEALTHCHECK_PATH` if needed) in the compose file under `environment:` —
+> otherwise the container reports `unhealthy` despite a running server.
+> The `ports:` mapping only affects host access and does not influence the healthcheck.
+
 ### Docker Hub (pre-built image)
 
 Pre-built multi-arch images (linux/amd64, linux/arm64) are published to
@@ -90,7 +97,7 @@ tagged release.
 docker pull rd2w/gerrit-mcp:latest
 
 # Or a specific version
-docker pull rd2w/gerrit-mcp:v1.1.1
+docker pull rd2w/gerrit-mcp:v1.3.0
 
 # Use the docker-compose file for pre-built images
 docker compose -f docker-compose.hub.yml up -d

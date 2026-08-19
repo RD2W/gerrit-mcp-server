@@ -109,7 +109,7 @@ docker compose up -d
 See `config/config.example.toml` for all options. Key sections:
 
 | Section | Purpose |
-|---|---|
+|---|---|---|
 | `[gerrit]` | Base URL, TLS (CA cert path, verify_ssl), timeout |
 | `[gerrit.auth]` | Auth mode (`http_basic`/`bearer`/`git_cookies`/`none`), env var names |
 | `[service]` | Default max results |
@@ -265,8 +265,8 @@ docker compose up -d
 Все опции в `config/config.example.toml`. Основные секции:
 
 | Секция | Назначение |
-|---|---|
-| `[gerrit]` | Базовый URL, TLS (путь к CA-сертификату, verify_ssl), таймаут |
+|---|---|---|
+| `[gerrit]` | Базовый URL, TLS (путь к CA-сертификату, verify_ssl), тайм-аут |
 | `[gerrit.auth]` | Режим аутентификации (`http_basic`/`bearer`/`git_cookies`/`none`), имена переменных окружения |
 | `[service]` | Максимум результатов по умолчанию |
 | `[cache]` | TTL + LRU кэш в памяти для повторных запросов |

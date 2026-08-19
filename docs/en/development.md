@@ -25,7 +25,7 @@ git checkout -b feat/my-feature
 ## Running tests
 
 ```bash
-# All tests (276+). Use --test-threads=1 to avoid env var race conditions
+# All tests (338). Use --test-threads=1 to avoid env var race conditions
 cargo test --workspace -- --test-threads=1
 
 # Specific crate
@@ -152,13 +152,13 @@ compilation issues that tests might miss.
 
 Releases are automated via `.github/workflows/release.yml`:
 
-1. Push a tag like `v1.1.1`
+1. Push a tag like `v1.3.0`
 2. CI builds multi-arch Docker images and creates a GitHub Release
 3. Binary artifacts are attached to the release
 
 Manual release steps (for debugging the workflow):
 
 ```bash
-docker build -t gerrit-mcp:v1.1.1 .
-docker tag gerrit-mcp:v1.1.1 gerrit-mcp:latest
+docker build -t gerrit-mcp:v1.3.0 .
+docker tag gerrit-mcp:v1.3.0 gerrit-mcp:latest
 ```
