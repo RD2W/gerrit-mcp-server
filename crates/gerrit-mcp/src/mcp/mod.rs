@@ -166,10 +166,15 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         override_url: Option<&str>,
     ) -> Result<Arc<dyn GerritRepository>, CallToolResult> {
         match override_url {
-            Some(url) => match self.resolve_client(Some(url)) {
-                Ok(client) => Ok(client as Arc<dyn GerritRepository>),
-                Err(e) => Err(self.error(format!("Failed to resolve client for {url}: {e}"))),
-            },
+            Some(url) => {
+                let normalized = url.trim_end_matches('/').to_string();
+                match self.resolve_client(Some(&normalized)) {
+                    Ok(client) => Ok(client as Arc<dyn GerritRepository>),
+                    Err(e) => {
+                        Err(self.error(format!("Failed to resolve client for {normalized}: {e}")))
+                    }
+                }
+            }
             None => Ok(self.repo.clone() as Arc<dyn GerritRepository>),
         }
     }
@@ -938,13 +943,21 @@ mod tests {
         let mock = MockGerritRepository::default();
         let server = GerritServer::new(mock);
         let err = server
-            .resolve_repo(Some("https://override.example.com"))
+            .resolve_repo(Some("https://gerrit.example.com/"))
             .err()
             .expect("resolve_repo(Some) without factory should fail");
         let text = extract_text(err);
         assert!(
             text.contains("client factory not configured"),
             "got: {text}"
+        );
+        assert!(
+            text.contains("Failed to resolve client for https://gerrit.example.com:"),
+            "expected normalized url (no trailing slash) in: {text}"
+        );
+        assert!(
+            !text.contains("https://gerrit.example.com/"),
+            "raw trailing slash must not appear in error: {text}"
         );
     }
 
