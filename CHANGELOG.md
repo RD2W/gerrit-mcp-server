@@ -12,6 +12,18 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `TARGET: 3`) in a single `POST /changes/{id}/revisions/current/review` call,
   with an optional review `message` and no inline comment.
 
+### Fixed
+
+- **`gerrit_base_url` override now works on all write tools** — `create_change`,
+  `set_ready_for_review`, `set_work_in_progress`, `set_topic`, `abandon_change`,
+  `revert_change`, `revert_submission`, `submit_change`, `post_review_comment`,
+  `post_draft_comment`, `delete_draft_comment`, `delete_draft_comments`,
+  `publish_drafts`, `add_reviewer`, `cherry_pick_change`, and `cherry_pick_chain`
+  now honor the `gerrit_base_url` parameter (previously declared but silently
+  ignored). The parameter is now optional (`None` = configured server) on these
+  tools, matching the read tools. All MCP tools now resolve the target server
+  through a shared `resolve_repo` helper.
+
 ## [1.2.0] — 2026-08-10
 
 ### Added
