@@ -970,7 +970,7 @@ mod tests {
         let err = server
             .resolve_repo(Some("https://override.example.com"))
             .err()
-            .expect("resolve_repo(Some) with factory on bad host should fail");
+            .expect("resolve_repo(Some) with factory on bad CA config should fail");
         let text = extract_text(err);
         assert!(text.contains("Failed to resolve client"), "got: {text}");
     }
