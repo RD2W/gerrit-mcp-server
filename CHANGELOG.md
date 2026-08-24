@@ -8,6 +8,12 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **`add_reviewer` no longer bypasses server confirmation policy** — the tool
+  no longer sends `confirmed: true` unconditionally. `confirmed` is now an
+  optional parameter (default: not sent, like the reference client), so
+  `addreviewer.maxWithoutConfirmation` applies normally unless the caller
+  explicitly requests confirmed status.
+
 - **Gerrit API parity fixes** — draft comments now send `unresolved`/`range`/
   embedded `` ```suggestion `` blocks and review comments forward `labels`;
   deleting a topic (204 empty body) no longer errors; `get_change_details`

@@ -259,7 +259,7 @@ The server exposes **29 tools** covering the full Gerrit REST API.
 
 | Tool | Description | Key parameters |
 |---|---|---|
-| `add_reviewer` | Add a reviewer to a change | `change_id`, `reviewer`, `state?` |
+| `add_reviewer` | Add a reviewer to a change | `change_id`, `reviewer`, `state?`, `confirmed?` |
 | `suggest_reviewers` | Get reviewer suggestions | `change_id`, `query`, `limit?`, `exclude_groups?` |
 | `set_labels` | Set one or more label votes on a change | `change_id`, `labels`, `message?`, `gerrit_base_url?` |
 | `post_review_comment` | Post a review comment | `change_id`, `file_path`, `line_number`, `message`, `unresolved?`, `labels?` |

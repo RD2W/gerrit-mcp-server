@@ -261,7 +261,7 @@ healthcheck:
 
 | Инструмент | Описание | Основные параметры |
 |---|---|---|
-| `add_reviewer` | Добавить ревьюера | `change_id`, `reviewer`, `state?` |
+| `add_reviewer` | Добавить ревьюера | `change_id`, `reviewer`, `state?`, `confirmed?` |
 | `suggest_reviewers` | Предложения ревьюеров | `change_id`, `query`, `limit?`, `exclude_groups?` |
 | `set_labels` | Установить голоса меток на изменение | `change_id`, `labels`, `message?`, `gerrit_base_url?` |
 | `post_review_comment` | Опубликовать комментарий ревью | `change_id`, `file_path`, `line_number`, `message`, `unresolved?`, `labels?` |
