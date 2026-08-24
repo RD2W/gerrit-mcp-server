@@ -289,6 +289,17 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         changes::get_related_changes(self, params).await
     }
 
+    #[tool(
+        name = "get_git_parent_changes",
+        description = "Get parent changes of a change"
+    )]
+    pub async fn get_git_parent_changes(
+        &self,
+        Parameters(params): Parameters<GetGitParentChangesParams>,
+    ) -> CallToolResult {
+        changes::get_git_parent_changes(self, params).await
+    }
+
     #[tool(name = "create_change", description = "Create a new change in Gerrit")]
     pub async fn create_change(
         &self,
@@ -862,6 +873,46 @@ mod tests {
 
         assert!(text.contains("Related changes for 123"), "got: {text}");
         assert!(text.contains("42 (1): Parent change [NEW]"), "got: {text}");
+    }
+
+    #[tokio::test]
+    pub async fn test_get_git_parent_changes_tool() {
+        let mock = MockGerritRepository::default();
+        mock.push_query_changes_result(Ok(vec![Change {
+            id: "p~1~Iabc".into(),
+            _number: 1,
+            subject: "Parent".into(),
+            status: "MERGED".into(),
+            project: "p".into(),
+            branch: "main".into(),
+            owner: AccountInfo {
+                _account_id: 1,
+                name: None,
+                email: None,
+            },
+            updated: "2026-01-01 00:00:00".into(),
+            work_in_progress: false,
+            topic: None,
+            reviewers: None,
+        }]));
+        let server = GerritServer::new(mock.clone());
+
+        let params = GetGitParentChangesParams {
+            change_id: "123".into(),
+            gerrit_base_url: None,
+            limit: None,
+        };
+        let result = server.get_git_parent_changes(Parameters(params)).await;
+        let text = extract_text(result);
+
+        assert!(text.contains("Parent"), "got: {text}");
+
+        let recorded = mock.last_query().expect("query recorded");
+        assert!(
+            recorded.query.starts_with("parentof:123"),
+            "got: {}",
+            recorded.query
+        );
     }
 
     #[tokio::test]

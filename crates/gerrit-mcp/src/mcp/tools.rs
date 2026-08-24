@@ -276,6 +276,25 @@ pub struct GetRelatedChangesParams {
     pub gerrit_base_url: Option<String>,
 }
 
+/// Parameters for getting parent changes of a change.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[schemars(description = "Get parent changes of a change (parentof query)")]
+pub struct GetGitParentChangesParams {
+    #[schemars(description = "Gerrit change ID (numeric or Change-Id hash)")]
+    pub change_id: String,
+
+    #[serde(default)]
+    #[schemars(default, description = "Max results (default 10)")]
+    pub limit: Option<u32>,
+
+    #[serde(default)]
+    #[schemars(
+        default,
+        description = "Base URL of the Gerrit instance (overrides config)"
+    )]
+    pub gerrit_base_url: Option<String>,
+}
+
 /// Parameters for suggesting reviewers for a change.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[schemars(description = "Suggest reviewers for a Gerrit change")]

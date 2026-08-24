@@ -309,6 +309,29 @@ pub async fn get_related_changes<R: GerritRepository + Send + Sync + 'static>(
     }
 }
 
+pub async fn get_git_parent_changes<R: GerritRepository + Send + Sync + 'static>(
+    server: &GerritServer<R>,
+    params: GetGitParentChangesParams,
+) -> CallToolResult {
+    let repo = match server.resolve_repo(params.gerrit_base_url.as_deref()) {
+        Ok(r) => r,
+        Err(e) => return e,
+    };
+    let query = format!("parentof:{}", params.change_id);
+    let limit = params.limit.unwrap_or(10);
+    let result = repo.query_changes(&query, Some(limit), &[]).await;
+    match result {
+        Ok(changes) => {
+            if changes.is_empty() {
+                server.text(format!("No parent changes found for {}.", params.change_id))
+            } else {
+                server.text(format_changes_output(&changes))
+            }
+        }
+        Err(e) => server.error(format!("Failed to get parent changes: {e}")),
+    }
+}
+
 pub async fn changes_submitted_together<R: GerritRepository + Send + Sync + 'static>(
     server: &GerritServer<R>,
     params: ChangesSubmittedTogetherParams,
