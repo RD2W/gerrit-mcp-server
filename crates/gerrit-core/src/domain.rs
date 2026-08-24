@@ -254,6 +254,14 @@ pub struct RelatedChange {
     pub _change_number: u64,
     #[serde(rename = "_revision_number")]
     pub _revision_number: u64,
+    #[serde(default)]
+    pub subject: Option<String>,
+    #[serde(default)]
+    pub status: Option<String>,
+    #[serde(default)]
+    pub insertions: Option<i64>,
+    #[serde(default)]
+    pub deletions: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

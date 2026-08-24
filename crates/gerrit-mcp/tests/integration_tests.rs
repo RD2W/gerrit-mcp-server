@@ -1147,10 +1147,18 @@ async fn test_cherry_pick_chain_pipeline() {
         RelatedChange {
             _change_number: 1,
             _revision_number: 1,
+            subject: None,
+            status: None,
+            insertions: None,
+            deletions: None,
         },
         RelatedChange {
             _change_number: 2,
             _revision_number: 1,
+            subject: None,
+            status: None,
+            insertions: None,
+            deletions: None,
         },
     ]));
     mock.push_cherry_pick_result(Ok(CherryPickResult {
@@ -1242,10 +1250,18 @@ async fn test_cherry_pick_chain_partial_failure() {
         RelatedChange {
             _change_number: 1,
             _revision_number: 1,
+            subject: None,
+            status: None,
+            insertions: None,
+            deletions: None,
         },
         RelatedChange {
             _change_number: 2,
             _revision_number: 1,
+            subject: None,
+            status: None,
+            insertions: None,
+            deletions: None,
         },
     ]));
     mock.push_cherry_pick_result(Err(DomainError::HttpStatus {

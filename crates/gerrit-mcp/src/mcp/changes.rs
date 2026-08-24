@@ -276,6 +276,39 @@ pub async fn get_revision_commit<R: GerritRepository + Send + Sync + 'static>(
     }
 }
 
+pub async fn get_related_changes<R: GerritRepository + Send + Sync + 'static>(
+    server: &GerritServer<R>,
+    params: GetRelatedChangesParams,
+) -> CallToolResult {
+    let repo = match server.resolve_repo(params.gerrit_base_url.as_deref()) {
+        Ok(r) => r,
+        Err(e) => return e,
+    };
+    let revision = params.revision_id.as_deref().unwrap_or(DEFAULT_REVISION);
+    let result = repo.get_related(&params.change_id, revision).await;
+    match result {
+        Ok(related) => {
+            if related.is_empty() {
+                return server.text(format!(
+                    "No related changes found for {}.",
+                    params.change_id
+                ));
+            }
+            let mut lines = vec![format!("Related changes for {}:", params.change_id)];
+            for rc in &related {
+                let subject = rc.subject.clone().unwrap_or_else(|| "no subject".into());
+                let status = rc.status.clone().unwrap_or_default();
+                lines.push(format!(
+                    "- {} ({}): {} [{}]",
+                    rc._change_number, rc._revision_number, subject, status
+                ));
+            }
+            server.text(lines.join("\n"))
+        }
+        Err(e) => server.error(format!("Failed to get related changes: {e}")),
+    }
+}
+
 pub async fn changes_submitted_together<R: GerritRepository + Send + Sync + 'static>(
     server: &GerritServer<R>,
     params: ChangesSubmittedTogetherParams,

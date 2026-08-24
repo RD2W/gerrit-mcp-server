@@ -278,6 +278,17 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         changes::get_revision_commit(self, params).await
     }
 
+    #[tool(
+        name = "get_related_changes",
+        description = "Get changes related to a revision"
+    )]
+    pub async fn get_related_changes(
+        &self,
+        Parameters(params): Parameters<GetRelatedChangesParams>,
+    ) -> CallToolResult {
+        changes::get_related_changes(self, params).await
+    }
+
     #[tool(name = "create_change", description = "Create a new change in Gerrit")]
     pub async fn create_change(
         &self,
@@ -622,10 +633,18 @@ mod tests {
             RelatedChange {
                 _change_number: 2,
                 _revision_number: 1,
+                subject: None,
+                status: None,
+                insertions: None,
+                deletions: None,
             },
             RelatedChange {
                 _change_number: 1,
                 _revision_number: 1,
+                subject: None,
+                status: None,
+                insertions: None,
+                deletions: None,
             },
         ]));
 
@@ -821,6 +840,31 @@ mod tests {
     }
 
     #[tokio::test]
+    pub async fn test_get_related_changes_tool() {
+        let mock = MockGerritRepository::default();
+        mock.push_get_related_result(Ok(vec![RelatedChange {
+            _change_number: 42,
+            _revision_number: 1,
+            subject: Some("Parent change".into()),
+            status: Some("NEW".into()),
+            insertions: Some(10),
+            deletions: Some(2),
+        }]));
+        let server = GerritServer::new(mock);
+
+        let params = GetRelatedChangesParams {
+            change_id: "123".into(),
+            revision_id: None,
+            gerrit_base_url: None,
+        };
+        let result = server.get_related_changes(Parameters(params)).await;
+        let text = extract_text(result);
+
+        assert!(text.contains("Related changes for 123"), "got: {text}");
+        assert!(text.contains("42 (1): Parent change [NEW]"), "got: {text}");
+    }
+
+    #[tokio::test]
     pub async fn test_cherry_pick_change_forwards_flags() {
         let mock = MockGerritRepository::default();
         mock.push_cherry_pick_result(Ok(CherryPickResult {
@@ -863,10 +907,18 @@ mod tests {
             RelatedChange {
                 _change_number: 2,
                 _revision_number: 1,
+                subject: None,
+                status: None,
+                insertions: None,
+                deletions: None,
             },
             RelatedChange {
                 _change_number: 1,
                 _revision_number: 1,
+                subject: None,
+                status: None,
+                insertions: None,
+                deletions: None,
             },
         ]));
 
@@ -974,10 +1026,18 @@ mod tests {
             RelatedChange {
                 _change_number: 1,
                 _revision_number: 1,
+                subject: None,
+                status: None,
+                insertions: None,
+                deletions: None,
             },
             RelatedChange {
                 _change_number: 2,
                 _revision_number: 1,
+                subject: None,
+                status: None,
+                insertions: None,
+                deletions: None,
             },
         ]));
 
@@ -1078,10 +1138,18 @@ mod tests {
             RelatedChange {
                 _change_number: 1,
                 _revision_number: 1,
+                subject: None,
+                status: None,
+                insertions: None,
+                deletions: None,
             },
             RelatedChange {
                 _change_number: 2,
                 _revision_number: 1,
+                subject: None,
+                status: None,
+                insertions: None,
+                deletions: None,
             },
         ]));
 
