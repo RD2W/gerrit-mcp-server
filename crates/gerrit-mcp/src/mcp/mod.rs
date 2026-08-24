@@ -675,8 +675,8 @@ mod tests {
                 email: None,
             },
             updated: "now".into(),
-            current_revision: None,
-            current_revision_number: None,
+            current_revision: Some("rev101".into()),
+            current_revision_number: Some(1),
             revisions: BTreeMap::new(),
             labels: BTreeMap::new(),
             reviewers: None,
@@ -904,6 +904,110 @@ mod tests {
             payload.base.as_deref(),
             Some("1111111111111111111111111111111111111111"),
             "chain base must be the current_revision SHA key, not the commit message"
+        );
+    }
+
+    #[tokio::test]
+    pub async fn test_cherry_pick_chain_partial_failure_when_base_sha_unknown() {
+        let mock = MockGerritRepository::default();
+
+        mock.push_get_related_result(Ok(vec![
+            RelatedChange {
+                _change_number: 1,
+                _revision_number: 1,
+            },
+            RelatedChange {
+                _change_number: 2,
+                _revision_number: 1,
+            },
+        ]));
+
+        mock.push_cherry_pick_result(Ok(CherryPickResult {
+            id: "new~100".into(),
+            _number: 100,
+            subject: "Cp1".into(),
+        }));
+        mock.push_get_change_detail_result(Ok(ChangeDetail {
+            id: "new~100".into(),
+            _number: 100,
+            subject: "Cp1".into(),
+            status: "NEW".into(),
+            project: "p".into(),
+            branch: "b".into(),
+            owner: AccountInfo {
+                _account_id: 1,
+                name: None,
+                email: None,
+            },
+            updated: "now".into(),
+            current_revision: Some("rev100".into()),
+            current_revision_number: Some(1),
+            revisions: {
+                let mut m = BTreeMap::new();
+                m.insert(
+                    "rev100".into(),
+                    RevisionInfo {
+                        _number: 1,
+                        commit: None,
+                    },
+                );
+                m
+            },
+            labels: BTreeMap::new(),
+            reviewers: None,
+            messages: vec![],
+            topic: None,
+        }));
+        mock.push_cherry_pick_result(Ok(CherryPickResult {
+            id: "new~200".into(),
+            _number: 200,
+            subject: "Cp2".into(),
+        }));
+        mock.push_get_change_detail_result(Ok(ChangeDetail {
+            id: "new~200".into(),
+            _number: 200,
+            subject: "Cp2".into(),
+            status: "NEW".into(),
+            project: "p".into(),
+            branch: "b".into(),
+            owner: AccountInfo {
+                _account_id: 2,
+                name: None,
+                email: None,
+            },
+            updated: "now".into(),
+            current_revision: None,
+            current_revision_number: None,
+            revisions: BTreeMap::new(),
+            labels: BTreeMap::new(),
+            reviewers: None,
+            messages: vec![],
+            topic: None,
+        }));
+
+        let server = GerritServer::new(mock);
+
+        let params = CherryPickChainParams {
+            change_id: "2".into(),
+            destination: "main".into(),
+            revision_id: None,
+            keep_reviewers: None,
+            allow_conflicts: None,
+            allow_empty: None,
+            gerrit_base_url: None,
+        };
+        let result = server.cherry_pick_chain(Parameters(params)).await;
+        let text = extract_text(result);
+
+        assert!(
+            text.contains("Partial failure at change 2"),
+            "chain must stop instead of guessing a base when the new revision SHA is unknown, got: {text}"
+        );
+        assert!(text.contains("200"), "got: {text}");
+        assert!(text.contains("Some changes were cherry-picked successfully"));
+        assert!(
+            !text.contains("Successfully cherry-picked chain"),
+            "chain must not report full success, got: {text}"
         );
     }
 
