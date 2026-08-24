@@ -268,7 +268,7 @@ healthcheck:
 | `post_draft_comment` | Опубликовать черновик | `change_id`, `file_path`, `line_number`, `message`, `suggestion?`, `in_reply_to?` |
 | `delete_draft_comment` | Удалить конкретный черновик | `change_id`, `draft_id` |
 | `delete_draft_comments` | Удалить все черновики изменения | `change_id` |
-| `publish_drafts` | Опубликовать черновики | `change_id` |
+| `publish_drafts` | Опубликовать черновики (отправляет `drafts=PUBLISH_ALL_REVISIONS`) | `change_id`, `message?`, `labels?` |
 
 ### Cherry-pick
 

@@ -493,11 +493,44 @@ pub struct SubmitRequest {
     pub notify: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+/// How Gerrit's "Set Review" endpoint should handle draft comments.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum DraftHandling {
+    /// Keep drafts unpublished (Gerrit's default when the field is omitted).
+    Keep,
+    /// Publish drafts, but only on the current revision.
+    Publish,
+    /// Publish drafts on every revision of the change.
+    PublishAllRevisions,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PublishDraftsRequest {
+    /// Draft handling action for the "Set Review" POST. Must be `Keep` to keep
+    /// drafts unpublished — Gerrit defaults to `KEEP` when the field is
+    /// omitted, which silently returns success while leaving comments in draft.
+    /// The reference client uses `PublishAllRevisions` so drafts from every
+    /// revision are published.
+    pub drafts: DraftHandling,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub notify: Option<String>,
+    pub message: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub labels: Option<BTreeMap<String, i32>>,
+}
+
+/// Response of Gerrit's "Set Review" endpoint
+/// (`POST /changes/{id}/revisions/current/review`).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewResult {
+    /// Label votes set by this review, keyed by label name.
+    #[serde(default)]
+    pub labels: BTreeMap<String, LabelInfo>,
+    /// Comments attached by this review, keyed by file path.
+    #[serde(default)]
+    pub comments: BTreeMap<String, Vec<Comment>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -858,5 +891,62 @@ mod tests {
         };
         let json = serde_json::to_value(&input).unwrap();
         assert_eq!(json["labels"]["Code-Review"], -1);
+    }
+
+    #[test]
+    fn publish_drafts_request_always_sends_drafts_publish() {
+        let req = PublishDraftsRequest {
+            drafts: DraftHandling::PublishAllRevisions,
+            message: None,
+            labels: None,
+        };
+        let json = serde_json::to_value(&req).unwrap();
+        // Gerrit's "Set Review" endpoint defaults `drafts` to KEEP, which returns
+        // success without publishing — so it must be sent explicitly.
+        assert_eq!(json["drafts"], "PUBLISH_ALL_REVISIONS");
+        // Optional fields are omitted when absent (skip_serializing_if).
+        assert!(json.get("message").is_none());
+        assert!(json.get("labels").is_none());
+        assert!(json.get("notify").is_none());
+    }
+
+    #[test]
+    fn publish_drafts_request_serializes_message_and_labels() {
+        let req = PublishDraftsRequest {
+            drafts: DraftHandling::PublishAllRevisions,
+            message: Some("Addressed all comments".into()),
+            labels: Some(BTreeMap::from([("Code-Review".into(), 1)])),
+        };
+        let json = serde_json::to_value(&req).unwrap();
+        assert_eq!(json["drafts"], "PUBLISH_ALL_REVISIONS");
+        assert_eq!(json["message"], "Addressed all comments");
+        assert_eq!(json["labels"]["Code-Review"], 1);
+    }
+
+    #[test]
+    fn review_result_parses_real_set_review_response() {
+        let json = serde_json::json!({
+            "labels": {
+                "Code-Review": {
+                    "all": [
+                        {"_account_id": 1, "name": "Reviewer", "value": 1}
+                    ]
+                }
+            },
+            "comments": {
+                "src/main.rs": [
+                    {
+                        "id": "c1",
+                        "line": 10,
+                        "message": "Looks good",
+                        "author": {"_account_id": 1, "name": "Reviewer"},
+                        "updated": "2026-08-24 10:00:00.000000000"
+                    }
+                ]
+            }
+        });
+        let result: ReviewResult = serde_json::from_value(json).unwrap();
+        assert_eq!(result.labels["Code-Review"].all.len(), 1);
+        assert_eq!(result.comments["src/main.rs"].len(), 1);
     }
 }

@@ -257,7 +257,16 @@ pub async fn publish_drafts<R: GerritRepository + Send + Sync + 'static>(
         Ok(r) => r,
         Err(e) => return e,
     };
-    let payload = PublishDraftsRequest { notify: None };
+    let payload = PublishDraftsRequest {
+        // Gerrit's "Set Review" endpoint defaults `drafts` to KEEP when omitted,
+        // which returns success without actually publishing — so the value must
+        // always be sent. PUBLISH_ALL_REVISIONS (matching the reference client)
+        // publishes drafts from every revision of the change, not just the
+        // current one.
+        drafts: DraftHandling::PublishAllRevisions,
+        message: params.message,
+        labels: params.labels,
+    };
     match repo.publish_drafts(&params.change_id, &payload).await {
         Ok(()) => server.text("All drafts published.".to_string()),
         Err(e) => server.error(format!("Failed to publish drafts: {e}")),

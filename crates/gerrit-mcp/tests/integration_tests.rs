@@ -1075,14 +1075,29 @@ async fn test_publish_drafts_pipeline() {
 
     let params = PublishDraftsParams {
         change_id: "123".into(),
-        message: None,
-        labels: None,
+        message: Some("Addressed all comments".into()),
+        labels: Some(BTreeMap::from([("Code-Review".into(), 1)])),
         gerrit_base_url: None,
     };
     let result = server.publish_drafts(Parameters(params)).await;
     let text = extract_text(result);
 
     assert_eq!(text, "All drafts published.");
+    // The handler must always send drafts explicitly — Gerrit's "Set Review"
+    // endpoint defaults to KEEP, which returns success without publishing.
+    let captured = server
+        .repo
+        .last_publish_drafts_payload
+        .read()
+        .unwrap()
+        .clone()
+        .expect("publish_drafts must record the payload");
+    assert_eq!(captured.drafts, DraftHandling::PublishAllRevisions);
+    assert_eq!(captured.message.as_deref(), Some("Addressed all comments"));
+    assert_eq!(
+        captured.labels,
+        Some(BTreeMap::from([("Code-Review".into(), 1)]))
+    );
 }
 
 #[tokio::test]

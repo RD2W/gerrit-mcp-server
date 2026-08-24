@@ -531,7 +531,10 @@ impl GerritRepository for GerritClient {
     ) -> Result<(), DomainError> {
         let cid = Self::percent_encode(change_id);
         let url = self.url(&format!("/changes/{cid}/revisions/current/review"));
-        self.post_empty(&url, payload).await
+        // Gerrit always returns a ReviewResult; parse it to validate the
+        // response instead of silently ignoring the body.
+        let _result: ReviewResult = self.post_json(&url, payload).await?;
+        Ok(())
     }
 
     async fn cherry_pick(
@@ -832,5 +835,32 @@ mod tests {
             ..ReviewInput::default()
         };
         client.set_labels("123", &payload).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_publish_drafts_posts_review_with_drafts_publish() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/changes/123/revisions/current/review"))
+            .and(body_partial_json(serde_json::json!({
+                "drafts": "PUBLISH_ALL_REVISIONS",
+                "message": "Addressed all comments",
+                "labels": {"Code-Review": 1},
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "labels": {"Code-Review": {"all": []}},
+                "comments": {},
+            })))
+            .mount(&server)
+            .await;
+
+        let client = test_client(&server.uri());
+
+        let payload = PublishDraftsRequest {
+            drafts: DraftHandling::PublishAllRevisions,
+            message: Some("Addressed all comments".into()),
+            labels: Some(BTreeMap::from([("Code-Review".into(), 1)])),
+        };
+        client.publish_drafts("123", &payload).await.unwrap();
     }
 }

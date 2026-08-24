@@ -266,7 +266,7 @@ The server exposes **29 tools** covering the full Gerrit REST API.
 | `post_draft_comment` | Post a draft comment | `change_id`, `file_path`, `line_number`, `message`, `suggestion?`, `in_reply_to?` |
 | `delete_draft_comment` | Delete a specific draft | `change_id`, `draft_id` |
 | `delete_draft_comments` | Delete all drafts on a change | `change_id` |
-| `publish_drafts` | Publish draft comments | `change_id` |
+| `publish_drafts` | Publish draft comments (sends `drafts=PUBLISH_ALL_REVISIONS`) | `change_id`, `message?`, `labels?` |
 
 ### Cherry-pick
 

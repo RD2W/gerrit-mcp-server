@@ -40,6 +40,7 @@ pub struct MockGerritRepository {
     pub post_draft_results: Mutex<Vec<Result<String, DomainError>>>,
     pub delete_draft_results: Mutex<Vec<Result<(), DomainError>>>,
     pub publish_drafts_results: Mutex<Vec<Result<(), DomainError>>>,
+    pub last_publish_drafts_payload: RwLock<Option<PublishDraftsRequest>>,
     pub cherry_pick_results: Mutex<Vec<Result<CherryPickResult, DomainError>>>,
     pub get_related_results: Mutex<Vec<Result<Vec<RelatedChange>, DomainError>>>,
     pub submit_change_results: Mutex<Vec<Result<SubmitResult, DomainError>>>,
@@ -369,8 +370,9 @@ impl GerritRepository for MockGerritRepository {
     async fn publish_drafts(
         &self,
         _change_id: &str,
-        _payload: &PublishDraftsRequest,
+        payload: &PublishDraftsRequest,
     ) -> Result<(), DomainError> {
+        *self.last_publish_drafts_payload.write().unwrap() = Some(payload.clone());
         pop_result!(self.publish_drafts_results)
     }
 

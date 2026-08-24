@@ -4,6 +4,21 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to
 follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **`publish_drafts` now actually publishes drafts** — the tool posts to Gerrit's
+  "Set Review" endpoint (`POST /changes/{id}/revisions/current/review`) with
+  `"drafts": "PUBLISH_ALL_REVISIONS"`, and now forwards the optional `message` and
+  `labels` arguments. Previously the request body was empty and ignored the
+  message/labels params; Gerrit defaults the `drafts` field to `KEEP` (see the
+  `ReviewInput` source: *"If not set, the default is `KEEP`"*), so the endpoint
+  returned success while leaving the draft comments unpublished ("false success").
+  `PUBLISH_ALL_REVISIONS` (matching the reference Python client) publishes drafts
+  from every revision of the change, not just the current one. The success
+  message is only accurate now.
+
 ## [1.3.0] — 2026-08-19
 
 ### Added
