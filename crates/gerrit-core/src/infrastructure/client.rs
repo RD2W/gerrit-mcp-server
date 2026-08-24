@@ -1066,6 +1066,47 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_add_reviewer_does_not_send_confirmed_by_default() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/changes/123/reviewers"))
+            .and(body_partial_json(serde_json::json!({
+                "reviewer": "dev@example.com"
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "reviewers": [{
+                    "_account_id": 1,
+                    "email": "dev@example.com"
+                }]
+            })))
+            .mount(&server)
+            .await;
+
+        let client = test_client(&server.uri());
+
+        let payload = AddReviewerRequest {
+            reviewer: "dev@example.com".into(),
+            confirmed: None,
+            state: None,
+            notify: None,
+        };
+        let result = client.add_reviewer("123", &payload).await.unwrap();
+        assert_eq!(result.reviewers.len(), 1);
+
+        let requests = server
+            .received_requests()
+            .await
+            .expect("no requests received");
+        let body = &requests[0].body;
+        let body_string = String::from_utf8_lossy(body);
+        assert!(
+            !body_string.contains("confirmed"),
+            "request body unexpectedly contains `confirmed`: {body_string}"
+        );
+    }
+
+    #[tokio::test]
     async fn test_set_topic_parses_json_string() {
         let server = MockServer::start().await;
 
