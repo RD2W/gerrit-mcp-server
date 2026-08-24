@@ -104,8 +104,8 @@ MCP** — это чистая HTTP-клиентская библиотека, к
 
 | Модуль | Назначение |
 |---|---|
-| `mcp/mod.rs` | `GerritServer<R>` — MCP-сервер с `Arc<R>` репозиторием. 29 методов с аннотацией `#[tool]`. Динамическое разрешение клиента для multi-instance Gerrit (через параметр `gerrit_base_url`). Хелперы: `extract_bugs()`, `sort_by_date()`, `merge_options()` |
-| `mcp/tools.rs` | Типы параметров с JSON Schema (schemars) для всех 29 инструментов |
+| `mcp/mod.rs` | `GerritServer<R>` — MCP-сервер с `Arc<R>` репозиторием. 32 методов с аннотацией `#[tool]`. Динамическое разрешение клиента для multi-instance Gerrit (через параметр `gerrit_base_url`). Хелперы: `extract_bugs()`, `sort_by_date()`, `merge_options()` |
+| `mcp/tools.rs` | Типы параметров с JSON Schema (schemars) для всех 32 инструментов |
 | `mcp/changes.rs` | Реализации инструментов жизненного цикла: запрос, создание, установка ready/WIP/topic, abandon, revert, submit |
 | `mcp/reviews.rs` | Реализации инструментов ревью и cherry-pick: список файлов, diff, предложение/добавление ревьюеров, cherry-pick одного/цепочки |
 | `mcp/comments.rs` | Реализации инструментов комментариев: список, публикация, удаление черновиков, publish |

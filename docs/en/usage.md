@@ -219,7 +219,7 @@ healthcheck:
 
 ## MCP tools reference
 
-The server exposes **29 tools** covering the full Gerrit REST API.
+The server exposes **32 tools** covering the full Gerrit REST API.
 
 ### Querying changes
 
