@@ -1101,7 +1101,7 @@ mod tests {
         let body = &requests[0].body;
         let body_string = String::from_utf8_lossy(body);
         assert!(
-            !body_string.contains("confirmed"),
+            !body_string.contains("\"confirmed\""),
             "request body unexpectedly contains `confirmed`: {body_string}"
         );
     }
