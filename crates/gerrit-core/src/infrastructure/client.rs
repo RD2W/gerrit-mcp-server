@@ -420,10 +420,13 @@ impl GerritRepository for GerritClient {
     ) -> Result<Option<String>, DomainError> {
         let cid = Self::percent_encode(change_id);
         let url = self.url(&format!("/changes/{cid}/topic"));
-        let topic: String = self.put_json(&url, payload).await?;
-        if topic.is_empty() {
+        let text = self.put_text(&url, payload).await?;
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
             Ok(None)
         } else {
+            let topic: String =
+                serde_json::from_str(trimmed).map_err(|e| Self::json_decode_error(e, &text))?;
             Ok(Some(topic))
         }
     }
@@ -602,6 +605,14 @@ impl GerritClient {
                 "JSON parse error: {e}\nRaw body (500 chars): {truncated}"
             ))
         })
+    }
+
+    /// Send PUT, return the raw (XSSI-stripped) response text, which may be empty.
+    async fn put_text(&self, url: &str, body: &impl Serialize) -> Result<String, DomainError> {
+        let response = self.put_builder(url, body).send().await?;
+        let response = Self::check_response(response).await?;
+        let text = response.text().await?;
+        Ok(Self::strip_xssi(&text).to_string())
     }
 }
 
@@ -997,5 +1008,43 @@ mod tests {
         };
 
         client.post_review("123", &batch).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_set_topic_empty_body_returns_none() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("PUT"))
+            .and(path("/changes/123/topic"))
+            .respond_with(ResponseTemplate::new(204))
+            .mount(&server)
+            .await;
+
+        let client = test_client(&server.uri());
+
+        let payload = TopicRequest {
+            topic: String::new(),
+        };
+        let result = client.set_topic("123", &payload).await.unwrap();
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_set_topic_parses_json_string() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("PUT"))
+            .and(path("/changes/123/topic"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(")]}'\n\"mytopic\""))
+            .mount(&server)
+            .await;
+
+        let client = test_client(&server.uri());
+
+        let payload = TopicRequest {
+            topic: "mytopic".into(),
+        };
+        let result = client.set_topic("123", &payload).await.unwrap();
+        assert_eq!(result, Some("mytopic".to_string()));
     }
 }

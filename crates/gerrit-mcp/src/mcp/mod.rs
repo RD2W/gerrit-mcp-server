@@ -1381,4 +1381,20 @@ mod tests {
         let text = extract_text(result);
         assert!(text.contains("Failed to resolve client"), "got: {text}");
     }
+
+    #[tokio::test]
+    async fn test_set_topic_empty_response_reports_deletion() {
+        let mock = MockGerritRepository::default();
+        mock.push_set_topic_result(Ok(None));
+        let server = GerritServer::new(mock);
+
+        let params = SetTopicParams {
+            change_id: "123".into(),
+            topic: String::new(),
+            gerrit_base_url: None,
+        };
+        let result = server.set_topic(Parameters(params)).await;
+        let text = extract_text(result);
+        assert!(text.contains("Topic deleted"), "got: {text}");
+    }
 }
