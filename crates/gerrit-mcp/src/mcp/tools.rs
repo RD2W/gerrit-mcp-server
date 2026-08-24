@@ -238,6 +238,25 @@ pub struct GetBugsFromClParams {
     pub gerrit_base_url: Option<String>,
 }
 
+/// Parameters for getting the full commit object of a revision.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[schemars(description = "Get the full commit object of a revision")]
+pub struct GetRevisionCommitParams {
+    #[schemars(description = "Gerrit change ID (numeric or Change-Id hash)")]
+    pub change_id: String,
+
+    #[serde(default = "default_current_revision")]
+    #[schemars(default, description = "Revision ID (default: current)")]
+    pub revision_id: Option<String>,
+
+    #[serde(default)]
+    #[schemars(
+        default,
+        description = "Base URL of the Gerrit instance (overrides config)"
+    )]
+    pub gerrit_base_url: Option<String>,
+}
+
 /// Parameters for suggesting reviewers for a change.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[schemars(description = "Suggest reviewers for a Gerrit change")]

@@ -267,6 +267,17 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         changes::get_bugs_from_cl(self, params).await
     }
 
+    #[tool(
+        name = "get_revision_commit",
+        description = "Get the full commit object of a revision"
+    )]
+    pub async fn get_revision_commit(
+        &self,
+        Parameters(params): Parameters<GetRevisionCommitParams>,
+    ) -> CallToolResult {
+        changes::get_revision_commit(self, params).await
+    }
+
     #[tool(name = "create_change", description = "Create a new change in Gerrit")]
     pub async fn create_change(
         &self,
@@ -759,6 +770,54 @@ mod tests {
             !text.contains("11111"),
             "must not pick bugs from the older PS1 revision, got: {text}"
         );
+    }
+
+    #[tokio::test]
+    pub async fn test_get_revision_commit_tool() {
+        let mock = MockGerritRepository::default();
+        mock.push_get_revision_commit_result(Ok(RevisionCommitInfo {
+            subject: "Fix stuff".into(),
+            message: "Fix stuff\n\nDetails".into(),
+            commit: "abcd1234".into(),
+            author: GitPersonInfo {
+                name: "Dev".into(),
+                email: "dev@example.com".into(),
+                date: "d".into(),
+                tz: 60,
+            },
+            committer: GitPersonInfo {
+                name: "CI".into(),
+                email: "ci@example.com".into(),
+                date: "d".into(),
+                tz: 60,
+            },
+            parents: vec![CommitParent {
+                commit: "11112222".into(),
+                subject: Some("p".into()),
+            }],
+        }));
+        let server = GerritServer::new(mock);
+
+        let params = GetRevisionCommitParams {
+            change_id: "123".into(),
+            revision_id: None,
+            gerrit_base_url: None,
+        };
+        let result = server.get_revision_commit(Parameters(params)).await;
+        let text = extract_text(result);
+
+        assert!(text.contains("Commit: abcd1234"), "got: {text}");
+        assert!(
+            text.contains("Author: Dev <dev@example.com>"),
+            "got: {text}"
+        );
+        assert!(
+            text.contains("Committer: CI <ci@example.com>"),
+            "got: {text}"
+        );
+        assert!(text.contains("Parents: 11112222"), "got: {text}");
+        assert!(text.contains("Subject: Fix stuff"), "got: {text}");
+        assert!(text.contains("Fix stuff\n\nDetails"), "got: {text}");
     }
 
     #[tokio::test]

@@ -12,9 +12,9 @@ use crate::health::metrics;
 use crate::mcp::GerritServer;
 use crate::mcp::tools::*;
 use crate::mcp::{
-    DEFAULT_STATUS_MERGED, GERRIT_OPTION_CURRENT_COMMIT, GERRIT_OPTION_CURRENT_REVISION,
-    GERRIT_OPTION_DETAILED_LABELS, REVIEWER_STATE_REVIEWER, extract_bugs, format_changes_output,
-    sort_by_date,
+    DEFAULT_REVISION, DEFAULT_STATUS_MERGED, GERRIT_OPTION_CURRENT_COMMIT,
+    GERRIT_OPTION_CURRENT_REVISION, GERRIT_OPTION_DETAILED_LABELS, REVIEWER_STATE_REVIEWER,
+    extract_bugs, format_changes_output, sort_by_date,
 };
 
 pub async fn query_changes<R: GerritRepository + Send + Sync + 'static>(
@@ -237,6 +237,42 @@ pub async fn get_bugs_from_cl<R: GerritRepository + Send + Sync + 'static>(
             }
         }
         Err(e) => server.error(format!("Failed to get bugs from CL: {e}")),
+    }
+}
+
+pub async fn get_revision_commit<R: GerritRepository + Send + Sync + 'static>(
+    server: &GerritServer<R>,
+    params: GetRevisionCommitParams,
+) -> CallToolResult {
+    let repo = match server.resolve_repo(params.gerrit_base_url.as_deref()) {
+        Ok(r) => r,
+        Err(e) => return e,
+    };
+    let revision = params.revision_id.as_deref().unwrap_or(DEFAULT_REVISION);
+    let result = repo.get_revision_commit(&params.change_id, revision).await;
+    match result {
+        Ok(c) => {
+            let mut lines = Vec::new();
+            lines.push(format!("Commit: {}", c.commit));
+            lines.push(format!(
+                "Author: {} <{}> {}",
+                c.author.name, c.author.email, c.author.date
+            ));
+            lines.push(format!(
+                "Committer: {} <{}> {}",
+                c.committer.name, c.committer.email, c.committer.date
+            ));
+            if !c.parents.is_empty() {
+                let parents: Vec<String> = c.parents.iter().map(|p| p.commit.clone()).collect();
+                lines.push(format!("Parents: {}", parents.join(", ")));
+            }
+            lines.push(String::new());
+            lines.push(format!("Subject: {}", c.subject));
+            lines.push(String::new());
+            lines.push(c.message.clone());
+            server.text(lines.join("\n"))
+        }
+        Err(e) => server.error(format!("Failed to get revision commit: {e}")),
     }
 }
 
