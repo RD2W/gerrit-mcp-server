@@ -6,6 +6,14 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **3 new core Gerrit API tools** — `get_revision_commit` (full commit object
+  for a revision), `get_related_changes` (relation-chain panel with
+  subject/status), `get_git_parent_changes` (changes that are parents of a
+  change via the `parentof:` query). All pure core API; plugin tools remain
+  out of scope.
+
 ### Fixed
 
 - **`add_reviewer` no longer bypasses server confirmation policy** — the tool
