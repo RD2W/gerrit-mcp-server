@@ -744,6 +744,7 @@ async fn test_add_reviewer_pipeline() {
         reviewer: "new-reviewer@test.com".into(),
         gerrit_base_url: None,
         state: None,
+        confirmed: None,
     };
     let result = server.add_reviewer(Parameters(params)).await;
     let text = extract_text(result);
@@ -766,6 +767,7 @@ async fn test_add_reviewer_error() {
         reviewer: "unknown@test.com".into(),
         gerrit_base_url: None,
         state: None,
+        confirmed: None,
     };
     let result = server.add_reviewer(Parameters(params)).await;
     let text = extract_text(result);
@@ -1316,6 +1318,7 @@ async fn test_invalid_add_reviewer_state() {
         reviewer: "someone@test.com".into(),
         gerrit_base_url: None,
         state: Some("INVALID".into()),
+        confirmed: None,
     };
     let result = server.add_reviewer(Parameters(params)).await;
     let text = extract_text(result);

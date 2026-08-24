@@ -349,6 +349,13 @@ pub struct AddReviewerParams {
     #[serde(default = "default_reviewer_state")]
     #[schemars(default, description = "Reviewer state (REVIEWER, CC)")]
     pub state: Option<String>,
+
+    #[serde(default)]
+    #[schemars(
+        default,
+        description = "Explicitly confirm the reviewer (skips server confirmation policy)"
+    )]
+    pub confirmed: Option<bool>,
 }
 
 /// Parameters for marking a change as ready for review.

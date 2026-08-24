@@ -124,7 +124,7 @@ pub async fn add_reviewer<R: GerritRepository + Send + Sync + 'static>(
     };
     let payload = AddReviewerRequest {
         reviewer: params.reviewer,
-        confirmed: Some(true),
+        confirmed: params.confirmed,
         state: Some(state.to_string()),
         notify: None,
     };

@@ -34,6 +34,7 @@ pub struct MockGerritRepository {
     pub changes_submitted_together_results: Arc<Mutex<Vec<Result<SubmittedTogether, DomainError>>>>,
     pub create_change_results: Arc<Mutex<Vec<Result<Change, DomainError>>>>,
     pub add_reviewer_results: Arc<Mutex<Vec<Result<AddReviewerResult, DomainError>>>>,
+    pub last_add_reviewer_payload: Arc<RwLock<Option<AddReviewerRequest>>>,
     pub set_ready_results: Arc<Mutex<Vec<Result<(), DomainError>>>>,
     pub set_wip_results: Arc<Mutex<Vec<Result<(), DomainError>>>>,
     pub set_topic_results: Arc<Mutex<Vec<Result<Option<String>, DomainError>>>>,
@@ -71,6 +72,7 @@ impl Default for MockGerritRepository {
             changes_submitted_together_results: Arc::new(Mutex::new(Vec::new())),
             create_change_results: Arc::new(Mutex::new(Vec::new())),
             add_reviewer_results: Arc::new(Mutex::new(Vec::new())),
+            last_add_reviewer_payload: Arc::new(RwLock::new(None)),
             set_ready_results: Arc::new(Mutex::new(Vec::new())),
             set_wip_results: Arc::new(Mutex::new(Vec::new())),
             set_topic_results: Arc::new(Mutex::new(Vec::new())),
@@ -341,8 +343,9 @@ impl GerritRepository for MockGerritRepository {
     async fn add_reviewer(
         &self,
         _change_id: &str,
-        _payload: &AddReviewerRequest,
+        payload: &AddReviewerRequest,
     ) -> Result<AddReviewerResult, DomainError> {
+        *self.last_add_reviewer_payload.write().unwrap() = Some(payload.clone());
         pop_result!(self.add_reviewer_results)
     }
 

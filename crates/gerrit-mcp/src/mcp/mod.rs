@@ -1801,6 +1801,7 @@ mod tests {
             reviewer: "r@example.com".into(),
             gerrit_base_url: Some("https://override.example.com".into()),
             state: None,
+            confirmed: None,
         };
         let result = server.add_reviewer(Parameters(params)).await;
         assert!(result.is_error.unwrap_or(false));
@@ -1817,6 +1818,7 @@ mod tests {
             reviewer: "r@example.com".into(),
             gerrit_base_url: Some("https://g.example.com".into()),
             state: Some("BOGUS".into()),
+            confirmed: None,
         };
         let result = server.add_reviewer(Parameters(params)).await;
         assert!(result.is_error.unwrap_or(false));
@@ -1826,6 +1828,79 @@ mod tests {
             !text.contains("Failed to resolve client"),
             "validation error must be reported before client resolution: got: {text}"
         );
+    }
+
+    fn reviewer_ok() -> AddReviewerResult {
+        AddReviewerResult {
+            error: None,
+            reviewers: vec![ReviewerInfo {
+                _account_id: 1,
+                email: Some("dev@example.com".into()),
+            }],
+        }
+    }
+
+    #[tokio::test]
+    pub async fn test_add_reviewer_sends_confirmed_none_by_default() {
+        let mock = MockGerritRepository::default();
+        mock.push_add_reviewer_result(Ok(reviewer_ok()));
+        let server = GerritServer::new(mock.clone());
+
+        let params = AddReviewerParams {
+            change_id: "123".into(),
+            reviewer: "dev".into(),
+            gerrit_base_url: None,
+            state: None,
+            confirmed: None,
+        };
+        let _ = server.add_reviewer(Parameters(params)).await;
+
+        let payload = mock.last_add_reviewer_payload.read().unwrap().clone();
+        let payload = payload.expect("payload captured");
+        assert!(
+            payload.confirmed.is_none(),
+            "confirmed must not be sent by default"
+        );
+    }
+
+    #[tokio::test]
+    pub async fn test_add_reviewer_forwards_confirmed_true() {
+        let mock = MockGerritRepository::default();
+        mock.push_add_reviewer_result(Ok(reviewer_ok()));
+        let server = GerritServer::new(mock.clone());
+
+        let params = AddReviewerParams {
+            change_id: "123".into(),
+            reviewer: "dev".into(),
+            gerrit_base_url: None,
+            state: None,
+            confirmed: Some(true),
+        };
+        let _ = server.add_reviewer(Parameters(params)).await;
+
+        let payload = mock.last_add_reviewer_payload.read().unwrap().clone();
+        let payload = payload.expect("payload captured");
+        assert_eq!(payload.confirmed, Some(true));
+    }
+
+    #[tokio::test]
+    pub async fn test_add_reviewer_forwards_confirmed_false() {
+        let mock = MockGerritRepository::default();
+        mock.push_add_reviewer_result(Ok(reviewer_ok()));
+        let server = GerritServer::new(mock.clone());
+
+        let params = AddReviewerParams {
+            change_id: "123".into(),
+            reviewer: "dev".into(),
+            gerrit_base_url: None,
+            state: None,
+            confirmed: Some(false),
+        };
+        let _ = server.add_reviewer(Parameters(params)).await;
+
+        let payload = mock.last_add_reviewer_payload.read().unwrap().clone();
+        let payload = payload.expect("payload captured");
+        assert_eq!(payload.confirmed, Some(false));
     }
 
     #[tokio::test]
