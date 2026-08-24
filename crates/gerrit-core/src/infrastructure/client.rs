@@ -382,7 +382,8 @@ impl GerritRepository for GerritClient {
         let cid = Self::percent_encode(change_id);
         let o = Self::build_options_query(options);
         let url = self.url(&format!("/changes/{cid}/submitted_together{o}"));
-        self.get_json(&url).await
+        let response: SubmittedTogetherResponse = self.get_json(&url).await?;
+        Ok(response.into())
     }
 
     async fn create_change(&self, payload: &CreateChangeRequest) -> Result<Change, DomainError> {
@@ -484,17 +485,17 @@ impl GerritRepository for GerritClient {
         Ok(resp.revert_changes)
     }
 
-    async fn post_review(
-        &self,
-        change_id: &str,
-        payload: &CommentBatchInput,
-    ) -> Result<(), DomainError> {
+    async fn set_labels(&self, change_id: &str, payload: &ReviewInput) -> Result<(), DomainError> {
         let cid = Self::percent_encode(change_id);
         let url = self.url(&format!("/changes/{cid}/revisions/current/review"));
         self.post_empty(&url, payload).await
     }
 
-    async fn set_labels(&self, change_id: &str, payload: &ReviewInput) -> Result<(), DomainError> {
+    async fn post_review(
+        &self,
+        change_id: &str,
+        payload: &CommentBatchInput,
+    ) -> Result<(), DomainError> {
         let cid = Self::percent_encode(change_id);
         let url = self.url(&format!("/changes/{cid}/revisions/current/review"));
         self.post_empty(&url, payload).await
@@ -685,6 +686,55 @@ mod tests {
             }
             other => panic!("expected HttpStatus error, got: {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn test_changes_submitted_together_bare_array() {
+        let server = MockServer::start().await;
+
+        let change_json = r#"{"id":"project~branch~12345","_number":12345,"subject":"Test change","status":"NEW","project":"project","branch":"main","owner":{"_account_id":1000},"updated":"2025-01-01 00:00:00"}"#;
+        let body = format!("{XSSI_JSON}[{change_json}]");
+
+        Mock::given(method("GET"))
+            .and(path("/a/changes/35250/submitted_together"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(body))
+            .mount(&server)
+            .await;
+
+        let client = test_client(&format!("{}/a", server.uri()));
+
+        let result = client
+            .changes_submitted_together("35250", &[])
+            .await
+            .unwrap();
+
+        assert_eq!(result.changes.len(), 1);
+        assert_eq!(result.changes[0]._number, 12345);
+        assert_eq!(result.non_visible_changes, 0);
+    }
+
+    #[tokio::test]
+    async fn test_changes_submitted_together_wrapped_object() {
+        let server = MockServer::start().await;
+
+        let change_json = r#"{"id":"project~branch~12345","_number":12345,"subject":"Test change","status":"NEW","project":"project","branch":"main","owner":{"_account_id":1000},"updated":"2025-01-01 00:00:00"}"#;
+        let body = format!("{XSSI_JSON}{{\"changes\":[{change_json}],\"non_visible_changes\":2}}");
+
+        Mock::given(method("GET"))
+            .and(path("/a/changes/35250/submitted_together"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(body))
+            .mount(&server)
+            .await;
+
+        let client = test_client(&format!("{}/a", server.uri()));
+
+        let result = client
+            .changes_submitted_together("35250", &[])
+            .await
+            .unwrap();
+
+        assert_eq!(result.changes.len(), 1);
+        assert_eq!(result.non_visible_changes, 2);
     }
 
     // -- percent_encode ----------------------------------------------------

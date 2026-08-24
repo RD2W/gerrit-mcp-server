@@ -279,8 +279,32 @@ pub struct RelatedChanges {
 pub struct SubmittedTogether {
     #[serde(default)]
     pub changes: Vec<Change>,
-    #[serde(default)]
+    // Gerrit uses the literal snake_case key `non_visible_changes` in JSON,
+    // so the explicit rename overrides the camelCase default.
+    #[serde(default, rename = "non_visible_changes")]
     pub non_visible_changes: u64,
+}
+
+/// Raw `submitted_together` response which can be one of two shapes:
+/// a bare JSON array of `ChangeInfo` (all changes visible) or an object
+/// with `changes`/`non_visible_changes` (some changes not visible).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum SubmittedTogetherResponse {
+    Changes(Vec<Change>),
+    Wrapped(SubmittedTogether),
+}
+
+impl From<SubmittedTogetherResponse> for SubmittedTogether {
+    fn from(response: SubmittedTogetherResponse) -> Self {
+        match response {
+            SubmittedTogetherResponse::Changes(changes) => Self {
+                changes,
+                non_visible_changes: 0,
+            },
+            SubmittedTogetherResponse::Wrapped(wrapped) => wrapped,
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -860,6 +884,54 @@ mod tests {
 
         let change: Change = serde_json::from_str(json).unwrap();
         assert_eq!(change.reviewers, None);
+    }
+
+    #[test]
+    fn test_submitted_together_response_bare_array() {
+        // Gerrit form 1: bare JSON array of ChangeInfo (all changes visible).
+        let json = r#"[
+            {
+                "id": "project~branch~12345",
+                "_number": 12345,
+                "subject": "First change",
+                "status": "NEW",
+                "project": "my-project",
+                "branch": "main",
+                "owner": {"_account_id": 1000},
+                "updated": "2025-01-01 00:00:00"
+            }
+        ]"#;
+
+        let response: SubmittedTogetherResponse = serde_json::from_str(json).unwrap();
+        let submitted: SubmittedTogether = response.into();
+        assert_eq!(submitted.changes.len(), 1);
+        assert_eq!(submitted.changes[0]._number, 12345);
+        assert_eq!(submitted.non_visible_changes, 0);
+    }
+
+    #[test]
+    fn test_submitted_together_response_wrapped_object() {
+        // Gerrit form 2: object with changes + non_visible_changes (some hidden).
+        let json = r#"{
+            "changes": [
+                {
+                    "id": "project~branch~12345",
+                    "_number": 12345,
+                    "subject": "First change",
+                    "status": "NEW",
+                    "project": "my-project",
+                    "branch": "main",
+                    "owner": {"_account_id": 1000},
+                    "updated": "2025-01-01 00:00:00"
+                }
+            ],
+            "non_visible_changes": 2
+        }"#;
+
+        let response: SubmittedTogetherResponse = serde_json::from_str(json).unwrap();
+        let submitted: SubmittedTogether = response.into();
+        assert_eq!(submitted.changes.len(), 1);
+        assert_eq!(submitted.non_visible_changes, 2);
     }
 
     #[test]

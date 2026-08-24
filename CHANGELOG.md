@@ -8,6 +8,16 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **`changes_submitted_together` accepts both Gerrit response shapes** — Gerrit's
+  `GET /changes/{id}/submitted_together` returns either a bare JSON array of
+  `ChangeInfo` (all changes visible) or an object with `changes` /
+  `non_visible_changes` (some changes not visible). Previously the client only
+  deserialized the object shape, so the tool failed with
+  `JSON parse error: invalid type: map, expected a sequence` (as observed on
+  change 35250). The response is now parsed via an untagged
+  `SubmittedTogetherResponse` enum that accepts both forms and normalized to
+  `SubmittedTogether` (the array form maps `non_visible_changes` to 0).
+
 - **`publish_drafts` now actually publishes drafts** — the tool posts to Gerrit's
   "Set Review" endpoint (`POST /changes/{id}/revisions/current/review`) with
   `"drafts": "PUBLISH_ALL_REVISIONS"`, and now forwards the optional `message` and
