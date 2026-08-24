@@ -363,6 +363,22 @@ pub struct CommitInfo {
 }
 
 // ---------------------------------------------------------------------------
+// RevisionCommitInfo (full commit info for a specific revision)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RevisionCommitInfo {
+    pub subject: String,
+    pub message: String,
+    pub commit: String,
+    pub author: GitPersonInfo,
+    pub committer: GitPersonInfo,
+    #[serde(default)]
+    pub parents: Vec<CommitParent>,
+}
+
+// ---------------------------------------------------------------------------
 // QueryParams (for mock tracking / transport)
 // ---------------------------------------------------------------------------
 
@@ -611,6 +627,12 @@ pub trait GerritRepository: Send + Sync {
     ) -> Result<BTreeMap<String, Vec<DraftComment>>, DomainError>;
 
     async fn get_commit(&self, change_id: &str) -> Result<CommitInfo, DomainError>;
+
+    async fn get_revision_commit(
+        &self,
+        change_id: &str,
+        revision: &str,
+    ) -> Result<RevisionCommitInfo, DomainError>;
 
     async fn suggest_reviewers(
         &self,

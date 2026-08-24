@@ -353,6 +353,17 @@ impl GerritRepository for GerritClient {
         self.get_json(&url).await
     }
 
+    async fn get_revision_commit(
+        &self,
+        change_id: &str,
+        revision: &str,
+    ) -> Result<RevisionCommitInfo, DomainError> {
+        let cid = Self::percent_encode(change_id);
+        let rev = Self::percent_encode(revision);
+        let url = self.url(&format!("/changes/{cid}/revisions/{rev}/commit"));
+        self.get_json(&url).await
+    }
+
     async fn suggest_reviewers(
         &self,
         change_id: &str,
@@ -1143,5 +1154,30 @@ mod tests {
             result.full_message,
             "Fix stuff\n\nDetails here\n\nChange-Id: Iabc123"
         );
+    }
+
+    #[tokio::test]
+    async fn test_get_revision_commit_uses_revision_path() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/changes/123/revisions/2/commit"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "subject": "Fix stuff",
+                "message": "Fix stuff\n\nChange-Id: Iabc",
+                "commit": "abcd1234efgh",
+                "author": {"name": "Dev", "email": "dev@example.com", "date": "2026-01-01 00:00:00", "tz": 60},
+                "committer": {"name": "CI", "email": "ci@example.com", "date": "2026-01-01 00:00:00", "tz": 60},
+                "parents": [{"commit": "11112222", "subject": "parent"}]
+            })))
+            .mount(&server)
+            .await;
+
+        let client = test_client(&server.uri());
+        let result = client.get_revision_commit("123", "2").await.unwrap();
+        assert_eq!(result.subject, "Fix stuff");
+        assert_eq!(result.commit, "abcd1234efgh");
+        assert_eq!(result.author.name, "Dev");
+        assert_eq!(result.parents[0].commit, "11112222");
     }
 }
