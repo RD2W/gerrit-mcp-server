@@ -8,6 +8,16 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Gerrit API parity fixes** — draft comments now send `unresolved`/`range`/
+  embedded `` ```suggestion `` blocks and review comments forward `labels`;
+  deleting a topic (204 empty body) no longer errors; `get_change_details`
+  extracts bugs from the current revision; cherry-pick tools forward
+  `keep_reviewers`/`allow_conflicts`/`allow_empty` and chain cherry-picks use
+  the current revision SHA as `base`; `query_changes_by_date_and_filters`
+  validates both dates and quotes the `message:` filter; bug extraction
+  matches the reference implementation (footer `b/` ids, space-separated
+  lists, case-insensitive inline `b/NNN`).
+
 - **`changes_submitted_together` accepts both Gerrit response shapes** — Gerrit's
   `GET /changes/{id}/submitted_together` returns either a bare JSON array of
   `ChangeInfo` (all changes visible) or an object with `changes` /
