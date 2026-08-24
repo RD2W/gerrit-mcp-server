@@ -763,6 +763,152 @@ mod tests {
     }
 
     #[tokio::test]
+    pub async fn test_cherry_pick_change_forwards_flags() {
+        let mock = MockGerritRepository::default();
+        mock.push_cherry_pick_result(Ok(CherryPickResult {
+            id: "new~999".into(),
+            _number: 999,
+            subject: "Cp".into(),
+        }));
+        let server = GerritServer::new(mock.clone());
+
+        let params = CherryPickChangeParams {
+            change_id: "12345".into(),
+            destination: "main".into(),
+            revision_id: None,
+            message: None,
+            keep_reviewers: Some(true),
+            allow_conflicts: Some(true),
+            allow_empty: Some(true),
+            gerrit_base_url: None,
+        };
+        let result = server.cherry_pick_change(Parameters(params)).await;
+        let text = extract_text(result);
+        assert!(text.contains("Successfully cherry-picked"), "got: {text}");
+
+        let payload = mock
+            .last_cherry_pick_payload
+            .read()
+            .unwrap()
+            .clone()
+            .expect("payload captured");
+        assert_eq!(payload.keep_reviewers, Some(true));
+        assert_eq!(payload.allow_conflicts, Some(true));
+        assert_eq!(payload.allow_empty, Some(true));
+    }
+
+    #[tokio::test]
+    pub async fn test_cherry_pick_chain_uses_current_revision_as_base() {
+        let mock = MockGerritRepository::default();
+
+        mock.push_get_related_result(Ok(vec![
+            RelatedChange {
+                _change_number: 2,
+                _revision_number: 1,
+            },
+            RelatedChange {
+                _change_number: 1,
+                _revision_number: 1,
+            },
+        ]));
+
+        mock.push_cherry_pick_result(Ok(CherryPickResult {
+            id: "new~101".into(),
+            _number: 101,
+            subject: "Cp2".into(),
+        }));
+        mock.push_get_change_detail_result(Ok(ChangeDetail {
+            id: "new~101".into(),
+            _number: 101,
+            subject: "Cp2".into(),
+            status: "NEW".into(),
+            project: "p".into(),
+            branch: "b".into(),
+            owner: AccountInfo {
+                _account_id: 2,
+                name: None,
+                email: None,
+            },
+            updated: "now".into(),
+            current_revision: None,
+            current_revision_number: None,
+            revisions: BTreeMap::new(),
+            labels: BTreeMap::new(),
+            reviewers: None,
+            messages: vec![],
+            topic: None,
+        }));
+        mock.push_cherry_pick_result(Ok(CherryPickResult {
+            id: "new~100".into(),
+            _number: 100,
+            subject: "Cp1".into(),
+        }));
+        mock.push_get_change_detail_result(Ok(ChangeDetail {
+            id: "new~100".into(),
+            _number: 100,
+            subject: "Cp1".into(),
+            status: "NEW".into(),
+            project: "p".into(),
+            branch: "b".into(),
+            owner: AccountInfo {
+                _account_id: 1,
+                name: None,
+                email: None,
+            },
+            updated: "now".into(),
+            current_revision: Some("1111111111111111111111111111111111111111".into()),
+            current_revision_number: Some(1),
+            revisions: {
+                let mut m = BTreeMap::new();
+                m.insert(
+                    "1111111111111111111111111111111111111111".into(),
+                    RevisionInfo {
+                        _number: 1,
+                        commit: Some(CommitWithMessage {
+                            message: "this is not a sha".into(),
+                        }),
+                    },
+                );
+                m
+            },
+            labels: BTreeMap::new(),
+            reviewers: None,
+            messages: vec![],
+            topic: None,
+        }));
+
+        let server = GerritServer::new(mock.clone());
+
+        let params = CherryPickChainParams {
+            change_id: "1".into(),
+            destination: "main".into(),
+            revision_id: None,
+            keep_reviewers: None,
+            allow_conflicts: None,
+            allow_empty: None,
+            gerrit_base_url: None,
+        };
+        let result = server.cherry_pick_chain(Parameters(params)).await;
+        let text = extract_text(result);
+        assert!(
+            text.contains("Successfully cherry-picked chain"),
+            "got: {text}"
+        );
+
+        let payload = mock
+            .last_cherry_pick_payload
+            .read()
+            .unwrap()
+            .clone()
+            .expect("payload captured");
+        assert_eq!(
+            payload.base.as_deref(),
+            Some("1111111111111111111111111111111111111111"),
+            "chain base must be the current_revision SHA key, not the commit message"
+        );
+    }
+
+    #[tokio::test]
     pub async fn test_submit_change_success() {
         let mock = MockGerritRepository::default();
         mock.push_submit_change_result(Ok(SubmitResult {

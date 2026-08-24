@@ -1030,6 +1030,42 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_cherry_pick_sends_flags() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/changes/123/revisions/1/cherrypick"))
+            .and(body_partial_json(serde_json::json!({
+                "destination": "main",
+                "keepReviewers": true,
+                "allowConflicts": true,
+                "allowEmpty": true,
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "new~100",
+                "_number": 100,
+                "subject": "Cp"
+            })))
+            .mount(&server)
+            .await;
+
+        let client = test_client(&server.uri());
+
+        let payload = CherryPickRequest {
+            message: None,
+            destination: "main".into(),
+            parent: None,
+            base: None,
+            notify: None,
+            keep_reviewers: Some(true),
+            allow_conflicts: Some(true),
+            allow_empty: Some(true),
+        };
+        let result = client.cherry_pick("123", "1", &payload).await.unwrap();
+        assert_eq!(result._number, 100);
+    }
+
+    #[tokio::test]
     async fn test_set_topic_parses_json_string() {
         let server = MockServer::start().await;
 

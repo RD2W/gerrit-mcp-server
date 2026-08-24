@@ -49,6 +49,7 @@ pub struct MockGerritRepository {
     pub last_post_draft_payload: Arc<RwLock<Option<CommentInput>>>,
     pub last_post_review_payload: Arc<RwLock<Option<CommentBatchInput>>>,
     pub cherry_pick_results: Arc<Mutex<Vec<Result<CherryPickResult, DomainError>>>>,
+    pub last_cherry_pick_payload: Arc<RwLock<Option<CherryPickRequest>>>,
     pub get_related_results: Arc<Mutex<Vec<Result<Vec<RelatedChange>, DomainError>>>>,
     pub submit_change_results: Arc<Mutex<Vec<Result<SubmitResult, DomainError>>>>,
 }
@@ -85,6 +86,7 @@ impl Default for MockGerritRepository {
             last_post_draft_payload: Arc::new(RwLock::new(None)),
             last_post_review_payload: Arc::new(RwLock::new(None)),
             cherry_pick_results: Arc::new(Mutex::new(Vec::new())),
+            last_cherry_pick_payload: Arc::new(RwLock::new(None)),
             get_related_results: Arc::new(Mutex::new(Vec::new())),
             submit_change_results: Arc::new(Mutex::new(Vec::new())),
         }
@@ -427,8 +429,9 @@ impl GerritRepository for MockGerritRepository {
         &self,
         _change_id: &str,
         _revision: &str,
-        _payload: &CherryPickRequest,
+        payload: &CherryPickRequest,
     ) -> Result<CherryPickResult, DomainError> {
+        *self.last_cherry_pick_payload.write().unwrap() = Some(payload.clone());
         pop_result!(self.cherry_pick_results)
     }
 
@@ -552,6 +555,9 @@ mod tests {
                     parent: None,
                     base: None,
                     notify: None,
+                    keep_reviewers: None,
+                    allow_conflicts: None,
+                    allow_empty: None,
                 },
             )
             .await

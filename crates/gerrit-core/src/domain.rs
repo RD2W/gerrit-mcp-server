@@ -451,6 +451,12 @@ pub struct CherryPickRequest {
     pub base: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notify: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub keep_reviewers: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allow_conflicts: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allow_empty: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize)]
