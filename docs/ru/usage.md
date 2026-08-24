@@ -251,7 +251,7 @@ healthcheck:
 | `create_change` | Создать новое изменение | `project`, `branch`, `subject`, `topic?`, `status?` |
 | `set_ready_for_review` | Пометить как готовое к ревью | `change_id` |
 | `set_work_in_progress` | Пометить как work-in-progress | `change_id`, `message?` |
-| `set_topic` | Установить тему изменения | `change_id`, `topic` |
+| `set_topic` | Установить тему изменения; пустой `topic` удаляет её | `change_id`, `topic` |
 | `abandon_change` | Отказаться от изменения | `change_id`, `message?` |
 | `revert_change` | Откатить принятое изменение | `change_id`, `message?` |
 | `revert_submission` | Откатить отправку | `change_id`, `message?` |
@@ -264,8 +264,8 @@ healthcheck:
 | `add_reviewer` | Добавить ревьюера | `change_id`, `reviewer`, `state?` |
 | `suggest_reviewers` | Предложения ревьюеров | `change_id`, `query`, `limit?`, `exclude_groups?` |
 | `set_labels` | Установить голоса меток на изменение | `change_id`, `labels`, `message?`, `gerrit_base_url?` |
-| `post_review_comment` | Опубликовать комментарий ревью | `change_id`, `file_path`, `line_number`, `message`, `unresolved?` |
-| `post_draft_comment` | Опубликовать черновик | `change_id`, `file_path`, `line_number`, `message`, `suggestion?`, `in_reply_to?` |
+| `post_review_comment` | Опубликовать комментарий ревью | `change_id`, `file_path`, `line_number`, `message`, `unresolved?`, `labels?` |
+| `post_draft_comment` | Опубликовать черновик (диапазон, unresolved, встроенный suggestion) | `change_id`, `file_path`, `line_number`, `message`, `unresolved?`, `suggestion?`, `in_reply_to?`, `start_line?`, `start_character?`, `end_line?`, `end_character?` |
 | `delete_draft_comment` | Удалить конкретный черновик | `change_id`, `draft_id` |
 | `delete_draft_comments` | Удалить все черновики изменения | `change_id` |
 | `publish_drafts` | Опубликовать черновики (отправляет `drafts=PUBLISH_ALL_REVISIONS`) | `change_id`, `message?`, `labels?` |
@@ -274,8 +274,8 @@ healthcheck:
 
 | Инструмент | Описание | Основные параметры |
 |---|---|---|
-| `cherry_pick_change` | Перенести изменение в другую ветку | `change_id`, `destination`, `revision_id?`, `message?` |
-| `cherry_pick_chain` | Перенести цепочку изменений | `change_id`, `destination`, `revision_id?` |
+| `cherry_pick_change` | Перенести изменение в другую ветку | `change_id`, `destination`, `revision_id?`, `message?`, `keep_reviewers?`, `allow_conflicts?`, `allow_empty?` |
+| `cherry_pick_chain` | Перенести цепочку изменений | `change_id`, `destination`, `revision_id?`, `keep_reviewers?`, `allow_conflicts?`, `allow_empty?` |
 
 ### Формат результатов
 

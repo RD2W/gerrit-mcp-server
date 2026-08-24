@@ -163,6 +163,9 @@ pub async fn cherry_pick_change<R: GerritRepository + Send + Sync + 'static>(
         parent: None,
         base: None,
         notify: None,
+        keep_reviewers: params.keep_reviewers,
+        allow_conflicts: params.allow_conflicts,
+        allow_empty: params.allow_empty,
     };
     match repo
         .cherry_pick(&params.change_id, revision, &payload)
@@ -209,6 +212,9 @@ pub async fn cherry_pick_chain<R: GerritRepository + Send + Sync + 'static>(
             parent: None,
             base: base.clone(),
             notify: None,
+            keep_reviewers: params.keep_reviewers,
+            allow_conflicts: params.allow_conflicts,
+            allow_empty: params.allow_empty,
         };
 
         let change_id_str = rc._change_number.to_string();
@@ -232,11 +238,8 @@ pub async fn cherry_pick_chain<R: GerritRepository + Send + Sync + 'static>(
                 ];
                 match repo.get_change_detail(&new_id, &base_opts).await {
                     Ok(detail) => {
-                        if let Some(ref rev_key) = detail.current_revision
-                            && let Some(rev_info) = detail.revisions.get(rev_key)
-                            && let Some(ref commit) = rev_info.commit
-                        {
-                            base = Some(commit.message.clone());
+                        if let Some(ref rev_key) = detail.current_revision {
+                            base = Some(rev_key.clone());
                         }
                         if base.is_none() {
                             base = Some(new_id);

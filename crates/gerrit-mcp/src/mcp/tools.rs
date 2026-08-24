@@ -664,7 +664,7 @@ pub struct CherryPickChangeParams {
     )]
     pub keep_reviewers: Option<bool>,
 
-    #[serde(default = "default_true")]
+    #[serde(default = "default_false")]
     #[schemars(default, description = "Whether to allow cherry-pick with conflicts")]
     pub allow_conflicts: Option<bool>,
 
@@ -701,7 +701,7 @@ pub struct CherryPickChainParams {
     )]
     pub keep_reviewers: Option<bool>,
 
-    #[serde(default = "default_true")]
+    #[serde(default = "default_false")]
     #[schemars(default, description = "Whether to allow cherry-pick with conflicts")]
     pub allow_conflicts: Option<bool>,
 
@@ -771,7 +771,7 @@ mod tests {
             Some(crate::mcp::DEFAULT_REVISION.to_string())
         );
         assert_eq!(params.keep_reviewers, Some(false));
-        assert_eq!(params.allow_conflicts, Some(true));
+        assert_eq!(params.allow_conflicts, Some(false));
         assert_eq!(params.allow_empty, Some(false));
     }
 
@@ -864,7 +864,7 @@ mod tests {
             Some(crate::mcp::DEFAULT_REVISION.to_string())
         );
         assert_eq!(params.keep_reviewers, Some(false));
-        assert_eq!(params.allow_conflicts, Some(true));
+        assert_eq!(params.allow_conflicts, Some(false));
         assert_eq!(params.allow_empty, Some(false));
         assert_eq!(params.message, None);
     }

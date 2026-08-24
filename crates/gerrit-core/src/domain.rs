@@ -428,25 +428,6 @@ pub struct ReviewInput {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct DraftInput {
-    pub path: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub line: Option<u64>,
-    pub message: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub side: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub parent: Option<u32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub in_reply_to: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub updated: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tag: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct CommentRange {
     #[serde(default)]
     pub start_line: u64,
@@ -470,6 +451,12 @@ pub struct CherryPickRequest {
     pub base: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notify: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub keep_reviewers: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allow_conflicts: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allow_empty: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -563,11 +550,11 @@ pub struct CommentBatchInput {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub comments: Option<BTreeMap<String, Vec<CommentInput>>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub drafts: Option<BTreeMap<String, Vec<DraftInput>>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub omit_duplicate_comments: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notify: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub labels: Option<BTreeMap<String, i32>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -694,7 +681,7 @@ pub trait GerritRepository: Send + Sync {
     async fn post_draft(
         &self,
         change_id: &str,
-        payload: &DraftInput,
+        payload: &CommentInput,
     ) -> Result<String, DomainError>;
 
     async fn delete_draft(&self, change_id: &str, draft_id: &str) -> Result<(), DomainError>;
@@ -837,6 +824,53 @@ mod tests {
         let detail: ChangeDetail = serde_json::from_str(json).unwrap();
         assert_eq!(detail._number, 12345);
         assert_eq!(detail.topic, None);
+    }
+
+    // -----------------------------------------------------------------------
+    // Serialization tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn comment_input_serializes_range_and_unresolved() {
+        let input = CommentInput {
+            id: None,
+            path: Some("src/lib.rs".into()),
+            side: None,
+            line: None,
+            range: Some(CommentRange {
+                start_line: 10,
+                start_character: 0,
+                end_line: 12,
+                end_character: 4,
+            }),
+            in_reply_to: None,
+            updated: None,
+            message: "look at this".into(),
+            tag: None,
+            unresolved: Some(true),
+        };
+        let json = serde_json::to_value(&input).unwrap();
+        assert_eq!(json["range"]["startLine"], 10);
+        assert_eq!(json["range"]["endLine"], 12);
+        assert_eq!(json["range"]["startCharacter"], 0);
+        assert_eq!(json["range"]["endCharacter"], 4);
+        assert_eq!(json["unresolved"], true);
+        assert!(
+            json.get("line").is_none(),
+            "line must be absent when range set"
+        );
+    }
+
+    #[test]
+    fn comment_batch_serializes_labels() {
+        let batch = CommentBatchInput {
+            comments: None,
+            omit_duplicate_comments: None,
+            notify: None,
+            labels: Some(BTreeMap::from([("Code-Review".to_string(), -1)])),
+        };
+        let json = serde_json::to_value(&batch).unwrap();
+        assert_eq!(json["labels"]["Code-Review"], -1);
     }
 
     #[test]

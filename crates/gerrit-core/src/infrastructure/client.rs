@@ -420,10 +420,13 @@ impl GerritRepository for GerritClient {
     ) -> Result<Option<String>, DomainError> {
         let cid = Self::percent_encode(change_id);
         let url = self.url(&format!("/changes/{cid}/topic"));
-        let topic: String = self.put_json(&url, payload).await?;
-        if topic.is_empty() {
+        let text = self.put_text(&url, payload).await?;
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
             Ok(None)
         } else {
+            let topic: String =
+                serde_json::from_str(trimmed).map_err(|e| Self::json_decode_error(e, &text))?;
             Ok(Some(topic))
         }
     }
@@ -504,7 +507,7 @@ impl GerritRepository for GerritClient {
     async fn post_draft(
         &self,
         change_id: &str,
-        payload: &DraftInput,
+        payload: &CommentInput,
     ) -> Result<String, DomainError> {
         let cid = Self::percent_encode(change_id);
         let url = self.url(&format!("/changes/{cid}/revisions/current/drafts"));
@@ -602,6 +605,14 @@ impl GerritClient {
                 "JSON parse error: {e}\nRaw body (500 chars): {truncated}"
             ))
         })
+    }
+
+    /// Send PUT, return the raw (XSSI-stripped) response text, which may be empty.
+    async fn put_text(&self, url: &str, body: &impl Serialize) -> Result<String, DomainError> {
+        let response = self.put_builder(url, body).send().await?;
+        let response = Self::check_response(response).await?;
+        let text = response.text().await?;
+        Ok(Self::strip_xssi(&text).to_string())
     }
 }
 
@@ -912,5 +923,164 @@ mod tests {
             labels: Some(BTreeMap::from([("Code-Review".into(), 1)])),
         };
         client.publish_drafts("123", &payload).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_post_draft_sends_range_and_unresolved() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("PUT"))
+            .and(path("/changes/123/revisions/current/drafts"))
+            .and(body_partial_json(serde_json::json!({
+                "path": "src/lib.rs",
+                "message": "look at this",
+                "range": {"startLine": 10, "startCharacter": 0, "endLine": 12, "endCharacter": 4},
+                "unresolved": true,
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_string(")]}'\n{\"id\":\"draft-1\"}"))
+            .mount(&server)
+            .await;
+
+        let client = test_client(&server.uri());
+
+        let payload = CommentInput {
+            id: None,
+            path: Some("src/lib.rs".into()),
+            side: None,
+            line: None,
+            range: Some(CommentRange {
+                start_line: 10,
+                start_character: 0,
+                end_line: 12,
+                end_character: 4,
+            }),
+            in_reply_to: None,
+            updated: None,
+            message: "look at this".into(),
+            tag: None,
+            unresolved: Some(true),
+        };
+
+        let draft_id = client.post_draft("123", &payload).await.unwrap();
+        assert_eq!(draft_id, "draft-1");
+    }
+
+    #[tokio::test]
+    async fn test_post_review_sends_labels() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/changes/123/revisions/current/review"))
+            .and(body_partial_json(serde_json::json!({
+                "comments": {
+                    "src/lib.rs": [{
+                        "path": "src/lib.rs",
+                        "line": 5,
+                        "message": "nit",
+                        "unresolved": true,
+                    }]
+                },
+                "labels": {"Code-Review": -1},
+            })))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+
+        let client = test_client(&server.uri());
+
+        let comment = CommentInput {
+            id: None,
+            path: Some("src/lib.rs".into()),
+            side: None,
+            line: Some(5),
+            range: None,
+            in_reply_to: None,
+            updated: None,
+            message: "nit".into(),
+            tag: None,
+            unresolved: Some(true),
+        };
+        let batch = CommentBatchInput {
+            comments: Some(BTreeMap::from([("src/lib.rs".into(), vec![comment])])),
+            omit_duplicate_comments: None,
+            notify: None,
+            labels: Some(BTreeMap::from([("Code-Review".into(), -1)])),
+        };
+
+        client.post_review("123", &batch).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_set_topic_empty_body_returns_none() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("PUT"))
+            .and(path("/changes/123/topic"))
+            .respond_with(ResponseTemplate::new(204))
+            .mount(&server)
+            .await;
+
+        let client = test_client(&server.uri());
+
+        let payload = TopicRequest {
+            topic: String::new(),
+        };
+        let result = client.set_topic("123", &payload).await.unwrap();
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_cherry_pick_sends_flags() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/changes/123/revisions/1/cherrypick"))
+            .and(body_partial_json(serde_json::json!({
+                "destination": "main",
+                "keepReviewers": true,
+                "allowConflicts": true,
+                "allowEmpty": true,
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "new~100",
+                "_number": 100,
+                "subject": "Cp"
+            })))
+            .mount(&server)
+            .await;
+
+        let client = test_client(&server.uri());
+
+        let payload = CherryPickRequest {
+            message: None,
+            destination: "main".into(),
+            parent: None,
+            base: None,
+            notify: None,
+            keep_reviewers: Some(true),
+            allow_conflicts: Some(true),
+            allow_empty: Some(true),
+        };
+        let result = client.cherry_pick("123", "1", &payload).await.unwrap();
+        assert_eq!(result._number, 100);
+    }
+
+    #[tokio::test]
+    async fn test_set_topic_parses_json_string() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("PUT"))
+            .and(path("/changes/123/topic"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(")]}'\n\"mytopic\""))
+            .mount(&server)
+            .await;
+
+        let client = test_client(&server.uri());
+
+        let payload = TopicRequest {
+            topic: "mytopic".into(),
+        };
+        let result = client.set_topic("123", &payload).await.unwrap();
+        assert_eq!(result, Some("mytopic".to_string()));
     }
 }

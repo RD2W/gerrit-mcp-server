@@ -46,6 +46,12 @@ pub async fn query_changes_by_date_and_filters<R: GerritRepository + Send + Sync
     server: &GerritServer<R>,
     params: QueryChangesByDateParams,
 ) -> CallToolResult {
+    let start_date = match chrono::NaiveDate::parse_from_str(&params.start_date, "%Y-%m-%d") {
+        Ok(d) => d,
+        Err(e) => return server.error(format!("Invalid start_date format: {e}")),
+    };
+    let start_str = start_date.format("%Y-%m-%d").to_string();
+
     let end_date = match chrono::NaiveDate::parse_from_str(&params.end_date, "%Y-%m-%d") {
         Ok(d) => d,
         Err(e) => return server.error(format!("Invalid end_date format: {e}")),
@@ -59,14 +65,15 @@ pub async fn query_changes_by_date_and_filters<R: GerritRepository + Send + Sync
     let status = params.status.as_deref().unwrap_or(DEFAULT_STATUS_MERGED);
     let mut query = format!(
         "status:{} after:{} before:{}",
-        status, params.start_date, end_plus_one
+        status, start_str, end_plus_one
     );
 
     if let Some(ref project) = params.project {
         query.push_str(&format!(" project:{}", project));
     }
     if let Some(ref msg) = params.message_substring {
-        query.push_str(&format!(" message:{}", msg));
+        let escaped = msg.replace('"', "\\\"");
+        query.push_str(&format!(" message:\"{}\"", escaped));
     }
 
     let opts = Vec::new();
@@ -121,9 +128,11 @@ pub async fn get_change_details<R: GerritRepository + Send + Sync + 'static>(
             }
 
             let commit_msg = detail
-                .revisions
-                .values()
-                .find_map(|r| r.commit.as_ref().map(|c| c.message.clone()))
+                .current_revision
+                .as_ref()
+                .and_then(|k| detail.revisions.get(k))
+                .and_then(|r| r.commit.as_ref())
+                .map(|c| c.message.clone())
                 .unwrap_or_default();
             let bugs = extract_bugs(&commit_msg);
             if !bugs.is_empty() {

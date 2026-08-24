@@ -249,7 +249,7 @@ The server exposes **29 tools** covering the full Gerrit REST API.
 | `create_change` | Create a new change | `project`, `branch`, `subject`, `topic?`, `status?` |
 | `set_ready_for_review` | Mark a change as ready for review | `change_id` |
 | `set_work_in_progress` | Mark a change as work-in-progress | `change_id`, `message?` |
-| `set_topic` | Set the topic for a change | `change_id`, `topic` |
+| `set_topic` | Set the topic for a change; empty `topic` deletes it | `change_id`, `topic` |
 | `abandon_change` | Abandon a change | `change_id`, `message?` |
 | `revert_change` | Revert a merged change | `change_id`, `message?` |
 | `revert_submission` | Revert a submission | `change_id`, `message?` |
@@ -262,8 +262,8 @@ The server exposes **29 tools** covering the full Gerrit REST API.
 | `add_reviewer` | Add a reviewer to a change | `change_id`, `reviewer`, `state?` |
 | `suggest_reviewers` | Get reviewer suggestions | `change_id`, `query`, `limit?`, `exclude_groups?` |
 | `set_labels` | Set one or more label votes on a change | `change_id`, `labels`, `message?`, `gerrit_base_url?` |
-| `post_review_comment` | Post a review comment | `change_id`, `file_path`, `line_number`, `message`, `unresolved?` |
-| `post_draft_comment` | Post a draft comment | `change_id`, `file_path`, `line_number`, `message`, `suggestion?`, `in_reply_to?` |
+| `post_review_comment` | Post a review comment | `change_id`, `file_path`, `line_number`, `message`, `unresolved?`, `labels?` |
+| `post_draft_comment` | Post a draft comment (range, unresolved, inline suggestion) | `change_id`, `file_path`, `line_number`, `message`, `unresolved?`, `suggestion?`, `in_reply_to?`, `start_line?`, `start_character?`, `end_line?`, `end_character?` |
 | `delete_draft_comment` | Delete a specific draft | `change_id`, `draft_id` |
 | `delete_draft_comments` | Delete all drafts on a change | `change_id` |
 | `publish_drafts` | Publish draft comments (sends `drafts=PUBLISH_ALL_REVISIONS`) | `change_id`, `message?`, `labels?` |
@@ -272,8 +272,8 @@ The server exposes **29 tools** covering the full Gerrit REST API.
 
 | Tool | Description | Key parameters |
 |---|---|---|
-| `cherry_pick_change` | Cherry-pick to a destination branch | `change_id`, `destination`, `revision_id?`, `message?` |
-| `cherry_pick_chain` | Cherry-pick a chain of changes | `change_id`, `destination`, `revision_id?` |
+| `cherry_pick_change` | Cherry-pick to a destination branch | `change_id`, `destination`, `revision_id?`, `message?`, `keep_reviewers?`, `allow_conflicts?`, `allow_empty?` |
+| `cherry_pick_chain` | Cherry-pick a chain of changes | `change_id`, `destination`, `revision_id?`, `keep_reviewers?`, `allow_conflicts?`, `allow_empty?` |
 
 ### Result format
 
