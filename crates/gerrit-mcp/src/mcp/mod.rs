@@ -1012,6 +1012,62 @@ mod tests {
     }
 
     #[tokio::test]
+    pub async fn test_cherry_pick_chain_partial_failure_when_change_detail_errors() {
+        let mock = MockGerritRepository::default();
+
+        mock.push_get_related_result(Ok(vec![
+            RelatedChange {
+                _change_number: 1,
+                _revision_number: 1,
+            },
+            RelatedChange {
+                _change_number: 2,
+                _revision_number: 1,
+            },
+        ]));
+
+        mock.push_cherry_pick_result(Ok(CherryPickResult {
+            id: "new~100".into(),
+            _number: 100,
+            subject: "Cp1".into(),
+        }));
+        mock.push_get_change_detail_result(Err(DomainError::HttpStatus {
+            status: 500,
+            body: "boom".into(),
+        }));
+        mock.push_cherry_pick_result(Ok(CherryPickResult {
+            id: "new~200".into(),
+            _number: 200,
+            subject: "Cp2".into(),
+        }));
+
+        let server = GerritServer::new(mock);
+
+        let params = CherryPickChainParams {
+            change_id: "2".into(),
+            destination: "main".into(),
+            revision_id: None,
+            keep_reviewers: None,
+            allow_conflicts: None,
+            allow_empty: None,
+            gerrit_base_url: None,
+        };
+        let result = server.cherry_pick_chain(Parameters(params)).await;
+        let text = extract_text(result);
+
+        assert!(
+            text.contains("Partial failure at change 2"),
+            "chain must fail when it cannot read the new change, got: {text}"
+        );
+        assert!(text.contains("200"), "got: {text}");
+        assert!(text.contains("Some changes were cherry-picked successfully"));
+        assert!(
+            !text.contains("Successfully cherry-picked chain"),
+            "chain must not report full success, got: {text}"
+        );
+    }
+
+    #[tokio::test]
     pub async fn test_submit_change_success() {
         let mock = MockGerritRepository::default();
         mock.push_submit_change_result(Ok(SubmitResult {
@@ -1111,6 +1167,28 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_query_by_date_rejects_invalid_end_date() {
+        let mock = MockGerritRepository::default();
+        let server = GerritServer::new(mock);
+
+        let params = QueryChangesByDateParams {
+            start_date: "2026-01-01".into(),
+            end_date: "31-2026-01".into(),
+            gerrit_base_url: None,
+            limit: None,
+            project: None,
+            message_substring: None,
+            status: None,
+        };
+        let result = server
+            .query_changes_by_date_and_filters(Parameters(params))
+            .await;
+        assert!(result.is_error.unwrap_or(false));
+        let text = extract_text(result);
+        assert!(text.contains("Invalid end_date format"), "got: {text}");
+    }
+
+    #[tokio::test]
     async fn test_query_by_date_quotes_message_filter() {
         let mock = MockGerritRepository::default();
         mock.push_query_changes_result(Ok(vec![]));
@@ -1132,6 +1210,33 @@ mod tests {
 
         let query = mock.last_query().expect("query recorded").query;
         assert!(query.contains("message:\"fix bug\""), "got: {query}");
+    }
+
+    #[tokio::test]
+    async fn test_query_by_date_escapes_quotes_in_message_filter() {
+        let mock = MockGerritRepository::default();
+        mock.push_query_changes_result(Ok(vec![]));
+        let server = GerritServer::new(mock.clone());
+
+        let params = QueryChangesByDateParams {
+            start_date: "2026-01-01".into(),
+            end_date: "2026-01-31".into(),
+            gerrit_base_url: None,
+            limit: None,
+            project: None,
+            message_substring: Some("has \"quotes\"".into()),
+            status: Some("open".into()),
+        };
+        let result = server
+            .query_changes_by_date_and_filters(Parameters(params))
+            .await;
+        let _ = extract_text(result);
+
+        let query = mock.last_query().expect("query recorded").query;
+        assert!(
+            query.contains("message:\"has \\\"quotes\\\"\""),
+            "inner quotes must be escaped, got: {query}"
+        );
     }
 
     #[test]

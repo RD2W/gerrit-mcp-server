@@ -18,6 +18,10 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   matches the reference implementation (footer `b/` ids, space-separated
   lists, case-insensitive inline `b/NNN`).
 
+  The legacy `suggestion:`-prefixed `message` special case is removed — use
+  the dedicated `suggestion` argument instead, which embeds a
+  `` ```suggestion `` block.
+
 - **`changes_submitted_together` accepts both Gerrit response shapes** — Gerrit's
   `GET /changes/{id}/submitted_together` returns either a bare JSON array of
   `ChangeInfo` (all changes visible) or an object with `changes` /
