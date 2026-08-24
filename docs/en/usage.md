@@ -235,7 +235,7 @@ The server exposes **29 tools** covering the full Gerrit REST API.
 
 | Tool | Description | Key parameters |
 |---|---|---|
-| `get_commit_message` | Get commit message for a change | `change_id` |
+| `get_commit_message` | Get verbatim commit message for a change (`GET /changes/{id}/message`) | `change_id` |
 | `list_change_files` | List files modified in a change | `change_id` |
 | `get_file_diff` | Get the diff for a file in a change | `change_id`, `file_path` |
 | `list_change_comments` | List published comments on a change | `change_id` |

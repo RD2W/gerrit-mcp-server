@@ -237,7 +237,7 @@ healthcheck:
 
 | Инструмент | Описание | Основные параметры |
 |---|---|---|
-| `get_commit_message` | Сообщение коммита для изменения | `change_id` |
+| `get_commit_message` | Дословное сообщение коммита для изменения (`GET /changes/{id}/message`) | `change_id` |
 | `list_change_files` | Список изменённых файлов | `change_id` |
 | `get_file_diff` | Diff для файла в изменении | `change_id`, `file_path` |
 | `list_change_comments` | Опубликованные комментарии | `change_id` |

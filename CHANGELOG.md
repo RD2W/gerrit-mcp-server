@@ -22,6 +22,11 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the dedicated `suggestion` argument instead, which embeds a
   `` ```suggestion `` block.
 
+- **`get_commit_message` returns the verbatim commit message** — the tool now
+  reads `GET /changes/{id}/message` and returns `full_message` as-is, instead of
+  a reformatted `CommitInfo` summary with synthetic headers and 8-character
+  truncated parent SHAs.
+
 - **`changes_submitted_together` accepts both Gerrit response shapes** — Gerrit's
   `GET /changes/{id}/submitted_together` returns either a bare JSON array of
   `ChangeInfo` (all changes visible) or an object with `changes` /
