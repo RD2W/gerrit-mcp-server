@@ -118,9 +118,9 @@ pub async fn post_review_comment<R: GerritRepository + Send + Sync + 'static>(
     comments_map.insert(params.file_path.clone(), vec![comment]);
     let batch = CommentBatchInput {
         comments: Some(comments_map),
-        drafts: None,
         omit_duplicate_comments: None,
         notify: None,
+        labels: params.labels,
     };
     match repo.post_review(&params.change_id, &batch).await {
         Ok(()) => server.text("Review comment posted.".to_string()),
@@ -140,46 +140,43 @@ pub async fn post_draft_comment<R: GerritRepository + Send + Sync + 'static>(
         Err(e) => return e,
     };
     let mut message = params.message.clone();
-    let suggestion = if message.starts_with("suggestion:") {
-        let s = message
-            .strip_prefix("suggestion:")
-            .unwrap_or("")
-            .trim()
-            .to_string();
-        message = s;
-        params.suggestion.or(Some(message.clone()))
+    if let Some(ref suggestion) = params.suggestion {
+        message.push_str(&format!("\n```suggestion\n{suggestion}\n```"));
+    }
+
+    let (range, line) = if let (Some(sl), Some(sc), Some(el), Some(ec)) = (
+        params.start_line,
+        params.start_character,
+        params.end_line,
+        params.end_character,
+    ) {
+        (
+            Some(CommentRange {
+                start_line: sl,
+                start_character: sc,
+                end_line: el,
+                end_character: ec,
+            }),
+            None,
+        )
     } else {
-        params.suggestion.clone()
+        (None, Some(params.line_number))
     };
 
-    let line = if params.start_line.is_some()
-        && params.start_character.is_some()
-        && params.end_line.is_some()
-        && params.end_character.is_some()
-    {
-        params.end_line
-    } else {
-        Some(params.line_number)
-    };
-
-    let draft = DraftInput {
-        path: params.file_path.clone(),
-        line,
-        message: message.clone(),
+    let draft = CommentInput {
+        id: None,
+        path: Some(params.file_path.clone()),
         side: None,
-        parent: None,
+        line,
+        range,
         in_reply_to: params.in_reply_to,
         updated: None,
+        message,
         tag: None,
+        unresolved: params.unresolved,
     };
     match repo.post_draft(&params.change_id, &draft).await {
-        Ok(draft_id) => {
-            let mut msg = format!("Draft comment posted (id: {}).", draft_id);
-            if let Some(s) = suggestion {
-                msg.push_str(&format!("\nSuggestion: {}", s));
-            }
-            server.text(msg)
-        }
+        Ok(draft_id) => server.text(format!("Draft comment posted (id: {}).", draft_id)),
         Err(e) => server.error(format!("Failed to post draft comment: {e}")),
     }
 }

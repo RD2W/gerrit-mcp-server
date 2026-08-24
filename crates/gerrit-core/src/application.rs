@@ -240,7 +240,7 @@ impl<R: GerritRepository> GerritRepository for GerritService<R> {
     async fn post_draft(
         &self,
         change_id: &str,
-        payload: &DraftInput,
+        payload: &CommentInput,
     ) -> Result<String, DomainError> {
         self.acquire_rate_limit().await?;
         self.repo.post_draft(change_id, payload).await

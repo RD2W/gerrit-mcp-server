@@ -504,7 +504,7 @@ impl GerritRepository for GerritClient {
     async fn post_draft(
         &self,
         change_id: &str,
-        payload: &DraftInput,
+        payload: &CommentInput,
     ) -> Result<String, DomainError> {
         let cid = Self::percent_encode(change_id);
         let url = self.url(&format!("/changes/{cid}/revisions/current/drafts"));
@@ -912,5 +912,90 @@ mod tests {
             labels: Some(BTreeMap::from([("Code-Review".into(), 1)])),
         };
         client.publish_drafts("123", &payload).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_post_draft_sends_range_and_unresolved() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("PUT"))
+            .and(path("/changes/123/revisions/current/drafts"))
+            .and(body_partial_json(serde_json::json!({
+                "path": "src/lib.rs",
+                "message": "look at this",
+                "range": {"startLine": 10, "startCharacter": 0, "endLine": 12, "endCharacter": 4},
+                "unresolved": true,
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_string(")]}'\n{\"id\":\"draft-1\"}"))
+            .mount(&server)
+            .await;
+
+        let client = test_client(&server.uri());
+
+        let payload = CommentInput {
+            id: None,
+            path: Some("src/lib.rs".into()),
+            side: None,
+            line: None,
+            range: Some(CommentRange {
+                start_line: 10,
+                start_character: 0,
+                end_line: 12,
+                end_character: 4,
+            }),
+            in_reply_to: None,
+            updated: None,
+            message: "look at this".into(),
+            tag: None,
+            unresolved: Some(true),
+        };
+
+        let draft_id = client.post_draft("123", &payload).await.unwrap();
+        assert_eq!(draft_id, "draft-1");
+    }
+
+    #[tokio::test]
+    async fn test_post_review_sends_labels() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/changes/123/revisions/current/review"))
+            .and(body_partial_json(serde_json::json!({
+                "comments": {
+                    "src/lib.rs": [{
+                        "path": "src/lib.rs",
+                        "line": 5,
+                        "message": "nit",
+                        "unresolved": true,
+                    }]
+                },
+                "labels": {"Code-Review": -1},
+            })))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+
+        let client = test_client(&server.uri());
+
+        let comment = CommentInput {
+            id: None,
+            path: Some("src/lib.rs".into()),
+            side: None,
+            line: Some(5),
+            range: None,
+            in_reply_to: None,
+            updated: None,
+            message: "nit".into(),
+            tag: None,
+            unresolved: Some(true),
+        };
+        let batch = CommentBatchInput {
+            comments: Some(BTreeMap::from([("src/lib.rs".into(), vec![comment])])),
+            omit_duplicate_comments: None,
+            notify: None,
+            labels: Some(BTreeMap::from([("Code-Review".into(), -1)])),
+        };
+
+        client.post_review("123", &batch).await.unwrap();
     }
 }

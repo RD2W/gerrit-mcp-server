@@ -1154,6 +1154,115 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_post_draft_comment_sends_range_without_line() {
+        let mock = MockGerritRepository::default();
+        mock.push_post_draft_result(Ok("draft-1".into()));
+        let server = GerritServer::new(mock.clone());
+
+        let params = PostDraftCommentParams {
+            change_id: "123".into(),
+            file_path: "src/lib.rs".into(),
+            line_number: 10,
+            message: "range comment".into(),
+            unresolved: Some(true),
+            gerrit_base_url: None,
+            start_line: Some(10),
+            start_character: Some(0),
+            end_line: Some(12),
+            end_character: Some(4),
+            suggestion: None,
+            in_reply_to: None,
+        };
+        let result = server.post_draft_comment(Parameters(params)).await;
+        let text = extract_text(result);
+        assert!(text.contains("Draft comment posted"), "got: {text}");
+
+        let payload = mock
+            .last_post_draft_payload
+            .read()
+            .unwrap()
+            .clone()
+            .expect("post_draft payload must be captured");
+        let range = payload.range.expect("range must be set");
+        assert_eq!(range.start_line, 10);
+        assert_eq!(range.start_character, 0);
+        assert_eq!(range.end_line, 12);
+        assert_eq!(range.end_character, 4);
+        assert_eq!(payload.line, None, "line must be None when range set");
+        assert_eq!(payload.unresolved, Some(true));
+    }
+
+    #[tokio::test]
+    async fn test_post_draft_comment_embeds_suggestion_block() {
+        let mock = MockGerritRepository::default();
+        mock.push_post_draft_result(Ok("draft-2".into()));
+        let server = GerritServer::new(mock.clone());
+
+        let params = PostDraftCommentParams {
+            change_id: "123".into(),
+            file_path: "src/lib.rs".into(),
+            line_number: 5,
+            message: "please fix".into(),
+            unresolved: None,
+            gerrit_base_url: None,
+            start_line: None,
+            start_character: None,
+            end_line: None,
+            end_character: None,
+            suggestion: Some("fixed = true;".into()),
+            in_reply_to: None,
+        };
+        let result = server.post_draft_comment(Parameters(params)).await;
+        let text = extract_text(result);
+        assert!(text.contains("Draft comment posted"), "got: {text}");
+
+        let payload = mock
+            .last_post_draft_payload
+            .read()
+            .unwrap()
+            .clone()
+            .expect("payload captured");
+        assert!(
+            payload
+                .message
+                .contains("```suggestion\nfixed = true;\n```"),
+            "suggestion block must be embedded in message, got: {}",
+            payload.message
+        );
+        assert_eq!(payload.line, Some(5));
+        assert!(payload.range.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_post_review_comment_sends_labels() {
+        let mock = MockGerritRepository::default();
+        mock.push_post_review_result(Ok(()));
+        let server = GerritServer::new(mock.clone());
+
+        let params = PostReviewCommentParams {
+            change_id: "123".into(),
+            file_path: "src/lib.rs".into(),
+            line_number: 3,
+            message: "nit".into(),
+            unresolved: Some(true),
+            gerrit_base_url: None,
+            labels: Some(BTreeMap::from([("Code-Review".to_string(), -1)])),
+        };
+        let result = server.post_review_comment(Parameters(params)).await;
+        let text = extract_text(result);
+        assert!(text.contains("Review comment posted"), "got: {text}");
+
+        let payload = mock
+            .last_post_review_payload
+            .read()
+            .unwrap()
+            .clone()
+            .expect("payload captured");
+        let labels = payload.labels.expect("labels must be forwarded");
+        assert_eq!(labels.get("Code-Review"), Some(&-1));
+    }
+
+    #[tokio::test]
     async fn test_delete_draft_comment_gerrit_base_url_override_error() {
         let mock = MockGerritRepository::default();
         let server = GerritServer::new(mock);
