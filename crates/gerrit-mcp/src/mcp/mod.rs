@@ -32,21 +32,20 @@ pub(crate) const DEFAULT_STATUS_MERGED: &str = "merged";
 pub(crate) fn extract_bugs(commit_message: &str) -> Vec<String> {
     let mut bugs: Vec<String> = Vec::new();
 
-    let prefix_re = Regex::new(r"(?im)^(?:Bug|Fixes|Closes):\s*(.+)").unwrap();
+    let prefix_re = Regex::new(r"(?im)^\s*(?:bug|fixes|closes)\s*:\s*(.+)").unwrap();
+    let part_re = Regex::new(r"(?i)^(?:b/)?(\d+)$").unwrap();
     for cap in prefix_re.captures_iter(commit_message) {
         if let Some(m) = cap.get(1) {
-            for part in m.as_str().split(',') {
+            for part in m.as_str().split(|c: char| c == ',' || c.is_whitespace()) {
                 let trimmed = part.trim();
-                if let Some(num) = trimmed.split(|c: char| !c.is_ascii_digit()).next()
-                    && !num.is_empty()
-                {
-                    bugs.push(num.to_string());
+                if let Some(num) = part_re.captures(trimmed).and_then(|c| c.get(1)) {
+                    bugs.push(num.as_str().to_string());
                 }
             }
         }
     }
 
-    let inline_re = Regex::new(r"b/(\d+)").unwrap();
+    let inline_re = Regex::new(r"(?i)\bb/(\d+)\b").unwrap();
     for cap in inline_re.captures_iter(commit_message) {
         if let Some(m) = cap.get(1) {
             bugs.push(m.as_str().to_string());
@@ -959,6 +958,76 @@ mod tests {
     fn test_extract_bugs_empty() {
         let bugs = extract_bugs("No bugs here.");
         assert!(bugs.is_empty());
+    }
+
+    #[test]
+    fn test_extract_bugs_footer_with_b_prefix() {
+        let bugs = extract_bugs("Bug: b/67890");
+        assert_eq!(bugs, vec!["67890"]);
+    }
+
+    #[test]
+    fn test_extract_bugs_space_separated_footer() {
+        let bugs = extract_bugs("Bug: 1 2");
+        assert_eq!(bugs, vec!["1", "2"]);
+    }
+
+    #[test]
+    fn test_extract_bugs_inline_case_insensitive() {
+        let bugs = extract_bugs("Fixed B/123");
+        assert_eq!(bugs, vec!["123"]);
+    }
+
+    #[test]
+    fn test_extract_bugs_inline_no_partial_word() {
+        let bugs = extract_bugs("Fixed fb/123");
+        assert!(bugs.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_query_by_date_rejects_invalid_start_date() {
+        let mock = MockGerritRepository::default();
+        let server = GerritServer::new(mock);
+
+        let params = QueryChangesByDateParams {
+            start_date: "01-2026-01".into(),
+            end_date: "2026-01-31".into(),
+            gerrit_base_url: None,
+            limit: None,
+            project: None,
+            message_substring: None,
+            status: None,
+        };
+        let result = server
+            .query_changes_by_date_and_filters(Parameters(params))
+            .await;
+        assert!(result.is_error.unwrap_or(false));
+        let text = extract_text(result);
+        assert!(text.contains("Invalid start_date format"), "got: {text}");
+    }
+
+    #[tokio::test]
+    async fn test_query_by_date_quotes_message_filter() {
+        let mock = MockGerritRepository::default();
+        mock.push_query_changes_result(Ok(vec![]));
+        let server = GerritServer::new(mock.clone());
+
+        let params = QueryChangesByDateParams {
+            start_date: "2026-01-01".into(),
+            end_date: "2026-01-31".into(),
+            gerrit_base_url: None,
+            limit: None,
+            project: None,
+            message_substring: Some("fix bug".into()),
+            status: Some("open".into()),
+        };
+        let result = server
+            .query_changes_by_date_and_filters(Parameters(params))
+            .await;
+        let _ = extract_text(result);
+
+        let query = mock.last_query().expect("query recorded").query;
+        assert!(query.contains("message:\"fix bug\""), "got: {query}");
     }
 
     #[test]
