@@ -294,7 +294,7 @@ impl GerritRepository for GerritClient {
 
     async fn get_commit_message(&self, change_id: &str) -> Result<CommitMessage, DomainError> {
         let cid = Self::percent_encode(change_id);
-        let url = self.url(&format!("/changes/{cid}/revisions/current/commit"));
+        let url = self.url(&format!("/changes/{cid}/message"));
         self.get_json(&url).await
     }
 
@@ -1082,5 +1082,25 @@ mod tests {
         };
         let result = client.set_topic("123", &payload).await.unwrap();
         assert_eq!(result, Some("mytopic".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_get_commit_message_uses_message_endpoint() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/changes/123/message"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "full_message": "Fix stuff\n\nDetails here\n\nChange-Id: Iabc123"
+            })))
+            .mount(&server)
+            .await;
+
+        let client = test_client(&server.uri());
+        let result = client.get_commit_message("123").await.unwrap();
+        assert_eq!(
+            result.full_message,
+            "Fix stuff\n\nDetails here\n\nChange-Id: Iabc123"
+        );
     }
 }

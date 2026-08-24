@@ -161,15 +161,8 @@ pub struct Message {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct CommitMessage {
-    pub subject: String,
-    pub message: String,
-    pub commit: String,
-    pub author: GitPersonInfo,
-    pub committer: GitPersonInfo,
-    #[serde(default)]
-    pub parents: Vec<CommitParent>,
+    pub full_message: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
