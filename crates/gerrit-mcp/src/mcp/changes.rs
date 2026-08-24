@@ -190,31 +190,7 @@ pub async fn get_commit_message<R: GerritRepository + Send + Sync + 'static>(
     };
     let result = repo.get_commit_message(&params.change_id).await;
     match result {
-        Ok(msg) => {
-            let mut lines = Vec::new();
-            lines.push(format!("Commit: {}", msg.commit));
-            lines.push(format!(
-                "Author: {} <{}> {}",
-                msg.author.name, msg.author.email, msg.author.date
-            ));
-            lines.push(format!(
-                "Committer: {} <{}> {}",
-                msg.committer.name, msg.committer.email, msg.committer.date
-            ));
-            if !msg.parents.is_empty() {
-                let parents: Vec<String> = msg
-                    .parents
-                    .iter()
-                    .map(|p| p.commit[..8.min(p.commit.len())].to_string())
-                    .collect();
-                lines.push(format!("Parents: {}", parents.join(", ")));
-            }
-            lines.push(String::new());
-            lines.push(format!("Subject: {}", msg.subject));
-            lines.push(String::new());
-            lines.push(msg.message.clone());
-            server.text(lines.join("\n"))
-        }
+        Ok(msg) => server.text(msg.full_message),
         Err(e) => server.error(format!("Failed to get commit message: {e}")),
     }
 }

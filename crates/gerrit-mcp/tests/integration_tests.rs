@@ -549,22 +549,7 @@ async fn test_get_change_detail_pipeline() {
 async fn test_get_commit_message_pipeline() {
     let mock = MockGerritRepository::default();
     mock.push_get_commit_message_result(Ok(CommitMessage {
-        subject: "Fix stuff".into(),
-        message: "Fix stuff\n\nDetails here\n\nChange-Id: Iabc123".into(),
-        commit: "abcd1234efgh5678".into(),
-        author: GitPersonInfo {
-            name: "Dev".into(),
-            email: "dev@example.com".into(),
-            date: "2026-01-01 00:00:00.000000000".into(),
-            tz: 60,
-        },
-        committer: GitPersonInfo {
-            name: "CI".into(),
-            email: "ci@example.com".into(),
-            date: "2026-01-01 00:00:00.000000000".into(),
-            tz: 60,
-        },
-        parents: vec![],
+        full_message: "Fix stuff\n\nDetails here\n\nChange-Id: Iabc123".into(),
     }));
     let server = GerritServer::new(mock);
 
@@ -575,11 +560,10 @@ async fn test_get_commit_message_pipeline() {
     let result = server.get_commit_message(Parameters(params)).await;
     let text = extract_text(result);
 
-    assert!(text.contains("Commit: abcd1234efgh5678"));
-    assert!(text.contains("Subject: Fix stuff"));
-    assert!(text.contains("Details here"));
-    assert!(text.contains("Author: Dev <dev@example.com>"));
-    assert!(text.contains("Committer: CI <ci@example.com>"));
+    assert_eq!(
+        text, "Fix stuff\n\nDetails here\n\nChange-Id: Iabc123",
+        "commit message must be returned verbatim"
+    );
 }
 
 #[tokio::test]
