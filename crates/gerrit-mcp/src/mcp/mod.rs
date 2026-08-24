@@ -702,6 +702,67 @@ mod tests {
     }
 
     #[tokio::test]
+    pub async fn test_get_change_details_bugs_from_current_revision() {
+        let mock = MockGerritRepository::default();
+        mock.push_get_change_detail_result(Ok(ChangeDetail {
+            id: "test~123".into(),
+            _number: 123,
+            subject: "Detail".into(),
+            status: "NEW".into(),
+            project: "p".into(),
+            branch: "b".into(),
+            owner: AccountInfo {
+                _account_id: 1,
+                name: None,
+                email: None,
+            },
+            updated: "now".into(),
+            current_revision: Some("ps2-sha".into()),
+            current_revision_number: Some(2),
+            revisions: {
+                let mut m = BTreeMap::new();
+                m.insert(
+                    "aaa-ps1".into(),
+                    RevisionInfo {
+                        _number: 1,
+                        commit: Some(CommitWithMessage {
+                            message: "Bug: 11111\n\nOld PS1".into(),
+                        }),
+                    },
+                );
+                m.insert(
+                    "ps2-sha".into(),
+                    RevisionInfo {
+                        _number: 2,
+                        commit: Some(CommitWithMessage {
+                            message: "Bug: 22222\n\nCurrent PS2".into(),
+                        }),
+                    },
+                );
+                m
+            },
+            labels: BTreeMap::new(),
+            reviewers: None,
+            messages: vec![],
+            topic: None,
+        }));
+        let server = GerritServer::new(mock);
+
+        let params = GetChangeDetailsParams {
+            change_id: "123".into(),
+            gerrit_base_url: None,
+            options: None,
+        };
+        let result = server.get_change_details(Parameters(params)).await;
+        let text = extract_text(result);
+        assert!(text.contains("Bugs: 22222"), "got: {text}");
+        assert!(
+            !text.contains("11111"),
+            "must not pick bugs from the older PS1 revision, got: {text}"
+        );
+    }
+
+    #[tokio::test]
     pub async fn test_submit_change_success() {
         let mock = MockGerritRepository::default();
         mock.push_submit_change_result(Ok(SubmitResult {

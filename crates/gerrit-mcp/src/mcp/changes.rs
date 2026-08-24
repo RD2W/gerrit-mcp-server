@@ -121,9 +121,11 @@ pub async fn get_change_details<R: GerritRepository + Send + Sync + 'static>(
             }
 
             let commit_msg = detail
-                .revisions
-                .values()
-                .find_map(|r| r.commit.as_ref().map(|c| c.message.clone()))
+                .current_revision
+                .as_ref()
+                .and_then(|k| detail.revisions.get(k))
+                .and_then(|r| r.commit.as_ref())
+                .map(|c| c.message.clone())
                 .unwrap_or_default();
             let bugs = extract_bugs(&commit_msg);
             if !bugs.is_empty() {
