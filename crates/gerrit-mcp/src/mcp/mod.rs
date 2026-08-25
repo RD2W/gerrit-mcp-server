@@ -32,21 +32,20 @@ pub(crate) const DEFAULT_STATUS_MERGED: &str = "merged";
 pub(crate) fn extract_bugs(commit_message: &str) -> Vec<String> {
     let mut bugs: Vec<String> = Vec::new();
 
-    let prefix_re = Regex::new(r"(?im)^(?:Bug|Fixes|Closes):\s*(.+)").unwrap();
+    let prefix_re = Regex::new(r"(?im)^\s*(?:bug|fixes|closes)\s*:\s*(.+)").unwrap();
+    let part_re = Regex::new(r"(?i)^(?:b/)?(\d+)$").unwrap();
     for cap in prefix_re.captures_iter(commit_message) {
         if let Some(m) = cap.get(1) {
-            for part in m.as_str().split(',') {
+            for part in m.as_str().split(|c: char| c == ',' || c.is_whitespace()) {
                 let trimmed = part.trim();
-                if let Some(num) = trimmed.split(|c: char| !c.is_ascii_digit()).next()
-                    && !num.is_empty()
-                {
-                    bugs.push(num.to_string());
+                if let Some(num) = part_re.captures(trimmed).and_then(|c| c.get(1)) {
+                    bugs.push(num.as_str().to_string());
                 }
             }
         }
     }
 
-    let inline_re = Regex::new(r"b/(\d+)").unwrap();
+    let inline_re = Regex::new(r"(?i)\bb/(\d+)\b").unwrap();
     for cap in inline_re.captures_iter(commit_message) {
         if let Some(m) = cap.get(1) {
             bugs.push(m.as_str().to_string());
@@ -266,6 +265,39 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
         Parameters(params): Parameters<GetBugsFromClParams>,
     ) -> CallToolResult {
         changes::get_bugs_from_cl(self, params).await
+    }
+
+    #[tool(
+        name = "get_revision_commit",
+        description = "Get the full commit object of a revision"
+    )]
+    pub async fn get_revision_commit(
+        &self,
+        Parameters(params): Parameters<GetRevisionCommitParams>,
+    ) -> CallToolResult {
+        changes::get_revision_commit(self, params).await
+    }
+
+    #[tool(
+        name = "get_related_changes",
+        description = "Get changes related to a revision"
+    )]
+    pub async fn get_related_changes(
+        &self,
+        Parameters(params): Parameters<GetRelatedChangesParams>,
+    ) -> CallToolResult {
+        changes::get_related_changes(self, params).await
+    }
+
+    #[tool(
+        name = "get_git_parent_changes",
+        description = "Get parent changes of a change"
+    )]
+    pub async fn get_git_parent_changes(
+        &self,
+        Parameters(params): Parameters<GetGitParentChangesParams>,
+    ) -> CallToolResult {
+        changes::get_git_parent_changes(self, params).await
     }
 
     #[tool(name = "create_change", description = "Create a new change in Gerrit")]
@@ -612,10 +644,20 @@ mod tests {
             RelatedChange {
                 _change_number: 2,
                 _revision_number: 1,
+                subject: None,
+                commit: None,
+                status: None,
+                insertions: None,
+                deletions: None,
             },
             RelatedChange {
                 _change_number: 1,
                 _revision_number: 1,
+                subject: None,
+                commit: None,
+                status: None,
+                insertions: None,
+                deletions: None,
             },
         ]));
 
@@ -676,8 +718,8 @@ mod tests {
                 email: None,
             },
             updated: "now".into(),
-            current_revision: None,
-            current_revision_number: None,
+            current_revision: Some("rev101".into()),
+            current_revision_number: Some(1),
             revisions: BTreeMap::new(),
             labels: BTreeMap::new(),
             reviewers: None,
@@ -699,6 +741,545 @@ mod tests {
         let result = server.cherry_pick_chain(Parameters(params)).await;
         let text = extract_text(result);
         assert!(text.contains("Successfully cherry-picked chain of 2"));
+    }
+
+    #[tokio::test]
+    pub async fn test_get_change_details_bugs_from_current_revision() {
+        let mock = MockGerritRepository::default();
+        mock.push_get_change_detail_result(Ok(ChangeDetail {
+            id: "test~123".into(),
+            _number: 123,
+            subject: "Detail".into(),
+            status: "NEW".into(),
+            project: "p".into(),
+            branch: "b".into(),
+            owner: AccountInfo {
+                _account_id: 1,
+                name: None,
+                email: None,
+            },
+            updated: "now".into(),
+            current_revision: Some("ps2-sha".into()),
+            current_revision_number: Some(2),
+            revisions: {
+                let mut m = BTreeMap::new();
+                m.insert(
+                    "aaa-ps1".into(),
+                    RevisionInfo {
+                        _number: 1,
+                        commit: Some(CommitWithMessage {
+                            message: "Bug: 11111\n\nOld PS1".into(),
+                        }),
+                    },
+                );
+                m.insert(
+                    "ps2-sha".into(),
+                    RevisionInfo {
+                        _number: 2,
+                        commit: Some(CommitWithMessage {
+                            message: "Bug: 22222\n\nCurrent PS2".into(),
+                        }),
+                    },
+                );
+                m
+            },
+            labels: BTreeMap::new(),
+            reviewers: None,
+            messages: vec![],
+            topic: None,
+        }));
+        let server = GerritServer::new(mock);
+
+        let params = GetChangeDetailsParams {
+            change_id: "123".into(),
+            gerrit_base_url: None,
+            options: None,
+        };
+        let result = server.get_change_details(Parameters(params)).await;
+        let text = extract_text(result);
+        assert!(text.contains("Bugs: 22222"), "got: {text}");
+        assert!(
+            !text.contains("11111"),
+            "must not pick bugs from the older PS1 revision, got: {text}"
+        );
+    }
+
+    #[tokio::test]
+    pub async fn test_get_revision_commit_tool() {
+        let mock = MockGerritRepository::default();
+        mock.push_get_revision_commit_result(Ok(RevisionCommitInfo {
+            subject: "Fix stuff".into(),
+            message: "Fix stuff\n\nDetails".into(),
+            commit: "abcd1234".into(),
+            author: GitPersonInfo {
+                name: "Dev".into(),
+                email: "dev@example.com".into(),
+                date: "d".into(),
+                tz: 60,
+            },
+            committer: GitPersonInfo {
+                name: "CI".into(),
+                email: "ci@example.com".into(),
+                date: "d".into(),
+                tz: 60,
+            },
+            parents: vec![CommitParent {
+                commit: "11112222".into(),
+                subject: Some("p".into()),
+            }],
+        }));
+        let server = GerritServer::new(mock);
+
+        let params = GetRevisionCommitParams {
+            change_id: "123".into(),
+            revision_id: None,
+            gerrit_base_url: None,
+        };
+        let result = server.get_revision_commit(Parameters(params)).await;
+        let text = extract_text(result);
+
+        assert!(text.contains("Commit: abcd1234"), "got: {text}");
+        assert!(
+            text.contains("Author: Dev <dev@example.com>"),
+            "got: {text}"
+        );
+        assert!(
+            text.contains("Committer: CI <ci@example.com>"),
+            "got: {text}"
+        );
+        assert!(text.contains("Parents: 11112222"), "got: {text}");
+        assert!(text.contains("Subject: Fix stuff"), "got: {text}");
+        assert!(text.contains("Fix stuff\n\nDetails"), "got: {text}");
+    }
+
+    #[tokio::test]
+    pub async fn test_get_related_changes_tool() {
+        let mock = MockGerritRepository::default();
+        mock.push_get_related_result(Ok(vec![RelatedChange {
+            _change_number: 42,
+            _revision_number: 1,
+            subject: Some("Parent change".into()),
+            commit: None,
+            status: Some("NEW".into()),
+            insertions: Some(10),
+            deletions: Some(2),
+        }]));
+        let server = GerritServer::new(mock);
+
+        let params = GetRelatedChangesParams {
+            change_id: "123".into(),
+            revision_id: None,
+            gerrit_base_url: None,
+        };
+        let result = server.get_related_changes(Parameters(params)).await;
+        let text = extract_text(result);
+
+        assert!(text.contains("Related changes for 123"), "got: {text}");
+        assert!(text.contains("42 (1): Parent change [NEW]"), "got: {text}");
+    }
+
+    #[tokio::test]
+    pub async fn test_get_related_changes_nested_subject() {
+        let mock = MockGerritRepository::default();
+        mock.push_get_related_result(Ok(vec![RelatedChange {
+            _change_number: 42,
+            _revision_number: 1,
+            subject: None,
+            commit: Some(RelatedCommit {
+                commit: "abc123".into(),
+                subject: Some("Nested subject".into()),
+            }),
+            status: Some("NEW".into()),
+            insertions: None,
+            deletions: None,
+        }]));
+        let server = GerritServer::new(mock);
+
+        let params = GetRelatedChangesParams {
+            change_id: "123".into(),
+            revision_id: None,
+            gerrit_base_url: None,
+        };
+        let result = server.get_related_changes(Parameters(params)).await;
+        let text = extract_text(result);
+
+        assert!(text.contains("42 (1): Nested subject [NEW]"), "got: {text}");
+    }
+
+    #[tokio::test]
+    pub async fn test_get_git_parent_changes_tool() {
+        let mock = MockGerritRepository::default();
+        mock.push_query_changes_result(Ok(vec![Change {
+            id: "p~1~Iabc".into(),
+            _number: 1,
+            subject: "Parent".into(),
+            status: "MERGED".into(),
+            project: "p".into(),
+            branch: "main".into(),
+            owner: AccountInfo {
+                _account_id: 1,
+                name: None,
+                email: None,
+            },
+            updated: "2026-01-01 00:00:00".into(),
+            work_in_progress: false,
+            topic: None,
+            reviewers: None,
+        }]));
+        let server = GerritServer::new(mock.clone());
+
+        let params = GetGitParentChangesParams {
+            change_id: "123".into(),
+            gerrit_base_url: None,
+            limit: None,
+        };
+        let result = server.get_git_parent_changes(Parameters(params)).await;
+        let text = extract_text(result);
+
+        assert!(text.contains("Parent"), "got: {text}");
+
+        let recorded = mock.last_query().expect("query recorded");
+        assert!(
+            recorded.query.starts_with("parentof:123"),
+            "got: {}",
+            recorded.query
+        );
+    }
+
+    #[tokio::test]
+    pub async fn test_cherry_pick_change_forwards_flags() {
+        let mock = MockGerritRepository::default();
+        mock.push_cherry_pick_result(Ok(CherryPickResult {
+            id: "new~999".into(),
+            _number: 999,
+            subject: "Cp".into(),
+        }));
+        let server = GerritServer::new(mock.clone());
+
+        let params = CherryPickChangeParams {
+            change_id: "12345".into(),
+            destination: "main".into(),
+            revision_id: None,
+            message: None,
+            keep_reviewers: Some(true),
+            allow_conflicts: Some(true),
+            allow_empty: Some(true),
+            gerrit_base_url: None,
+        };
+        let result = server.cherry_pick_change(Parameters(params)).await;
+        let text = extract_text(result);
+        assert!(text.contains("Successfully cherry-picked"), "got: {text}");
+
+        let payload = mock
+            .last_cherry_pick_payload
+            .read()
+            .unwrap()
+            .clone()
+            .expect("payload captured");
+        assert_eq!(payload.keep_reviewers, Some(true));
+        assert_eq!(payload.allow_conflicts, Some(true));
+        assert_eq!(payload.allow_empty, Some(true));
+    }
+
+    #[tokio::test]
+    pub async fn test_cherry_pick_chain_uses_current_revision_as_base() {
+        let mock = MockGerritRepository::default();
+
+        mock.push_get_related_result(Ok(vec![
+            RelatedChange {
+                _change_number: 2,
+                _revision_number: 1,
+                subject: None,
+                commit: None,
+                status: None,
+                insertions: None,
+                deletions: None,
+            },
+            RelatedChange {
+                _change_number: 1,
+                _revision_number: 1,
+                subject: None,
+                commit: None,
+                status: None,
+                insertions: None,
+                deletions: None,
+            },
+        ]));
+
+        mock.push_cherry_pick_result(Ok(CherryPickResult {
+            id: "new~101".into(),
+            _number: 101,
+            subject: "Cp2".into(),
+        }));
+        mock.push_get_change_detail_result(Ok(ChangeDetail {
+            id: "new~101".into(),
+            _number: 101,
+            subject: "Cp2".into(),
+            status: "NEW".into(),
+            project: "p".into(),
+            branch: "b".into(),
+            owner: AccountInfo {
+                _account_id: 2,
+                name: None,
+                email: None,
+            },
+            updated: "now".into(),
+            current_revision: None,
+            current_revision_number: None,
+            revisions: BTreeMap::new(),
+            labels: BTreeMap::new(),
+            reviewers: None,
+            messages: vec![],
+            topic: None,
+        }));
+        mock.push_cherry_pick_result(Ok(CherryPickResult {
+            id: "new~100".into(),
+            _number: 100,
+            subject: "Cp1".into(),
+        }));
+        mock.push_get_change_detail_result(Ok(ChangeDetail {
+            id: "new~100".into(),
+            _number: 100,
+            subject: "Cp1".into(),
+            status: "NEW".into(),
+            project: "p".into(),
+            branch: "b".into(),
+            owner: AccountInfo {
+                _account_id: 1,
+                name: None,
+                email: None,
+            },
+            updated: "now".into(),
+            current_revision: Some("1111111111111111111111111111111111111111".into()),
+            current_revision_number: Some(1),
+            revisions: {
+                let mut m = BTreeMap::new();
+                m.insert(
+                    "1111111111111111111111111111111111111111".into(),
+                    RevisionInfo {
+                        _number: 1,
+                        commit: Some(CommitWithMessage {
+                            message: "this is not a sha".into(),
+                        }),
+                    },
+                );
+                m
+            },
+            labels: BTreeMap::new(),
+            reviewers: None,
+            messages: vec![],
+            topic: None,
+        }));
+
+        let server = GerritServer::new(mock.clone());
+
+        let params = CherryPickChainParams {
+            change_id: "1".into(),
+            destination: "main".into(),
+            revision_id: None,
+            keep_reviewers: None,
+            allow_conflicts: None,
+            allow_empty: None,
+            gerrit_base_url: None,
+        };
+        let result = server.cherry_pick_chain(Parameters(params)).await;
+        let text = extract_text(result);
+        assert!(
+            text.contains("Successfully cherry-picked chain"),
+            "got: {text}"
+        );
+
+        let payload = mock
+            .last_cherry_pick_payload
+            .read()
+            .unwrap()
+            .clone()
+            .expect("payload captured");
+        assert_eq!(
+            payload.base.as_deref(),
+            Some("1111111111111111111111111111111111111111"),
+            "chain base must be the current_revision SHA key, not the commit message"
+        );
+    }
+
+    #[tokio::test]
+    pub async fn test_cherry_pick_chain_partial_failure_when_base_sha_unknown() {
+        let mock = MockGerritRepository::default();
+
+        mock.push_get_related_result(Ok(vec![
+            RelatedChange {
+                _change_number: 1,
+                _revision_number: 1,
+                subject: None,
+                commit: None,
+                status: None,
+                insertions: None,
+                deletions: None,
+            },
+            RelatedChange {
+                _change_number: 2,
+                _revision_number: 1,
+                subject: None,
+                commit: None,
+                status: None,
+                insertions: None,
+                deletions: None,
+            },
+        ]));
+
+        mock.push_cherry_pick_result(Ok(CherryPickResult {
+            id: "new~100".into(),
+            _number: 100,
+            subject: "Cp1".into(),
+        }));
+        mock.push_get_change_detail_result(Ok(ChangeDetail {
+            id: "new~100".into(),
+            _number: 100,
+            subject: "Cp1".into(),
+            status: "NEW".into(),
+            project: "p".into(),
+            branch: "b".into(),
+            owner: AccountInfo {
+                _account_id: 1,
+                name: None,
+                email: None,
+            },
+            updated: "now".into(),
+            current_revision: Some("rev100".into()),
+            current_revision_number: Some(1),
+            revisions: {
+                let mut m = BTreeMap::new();
+                m.insert(
+                    "rev100".into(),
+                    RevisionInfo {
+                        _number: 1,
+                        commit: None,
+                    },
+                );
+                m
+            },
+            labels: BTreeMap::new(),
+            reviewers: None,
+            messages: vec![],
+            topic: None,
+        }));
+        mock.push_cherry_pick_result(Ok(CherryPickResult {
+            id: "new~200".into(),
+            _number: 200,
+            subject: "Cp2".into(),
+        }));
+        mock.push_get_change_detail_result(Ok(ChangeDetail {
+            id: "new~200".into(),
+            _number: 200,
+            subject: "Cp2".into(),
+            status: "NEW".into(),
+            project: "p".into(),
+            branch: "b".into(),
+            owner: AccountInfo {
+                _account_id: 2,
+                name: None,
+                email: None,
+            },
+            updated: "now".into(),
+            current_revision: None,
+            current_revision_number: None,
+            revisions: BTreeMap::new(),
+            labels: BTreeMap::new(),
+            reviewers: None,
+            messages: vec![],
+            topic: None,
+        }));
+
+        let server = GerritServer::new(mock);
+
+        let params = CherryPickChainParams {
+            change_id: "2".into(),
+            destination: "main".into(),
+            revision_id: None,
+            keep_reviewers: None,
+            allow_conflicts: None,
+            allow_empty: None,
+            gerrit_base_url: None,
+        };
+        let result = server.cherry_pick_chain(Parameters(params)).await;
+        let text = extract_text(result);
+
+        assert!(
+            text.contains("Partial failure at change 2"),
+            "chain must stop instead of guessing a base when the new revision SHA is unknown, got: {text}"
+        );
+        assert!(text.contains("200"), "got: {text}");
+        assert!(text.contains("Some changes were cherry-picked successfully"));
+        assert!(
+            !text.contains("Successfully cherry-picked chain"),
+            "chain must not report full success, got: {text}"
+        );
+    }
+
+    #[tokio::test]
+    pub async fn test_cherry_pick_chain_partial_failure_when_change_detail_errors() {
+        let mock = MockGerritRepository::default();
+
+        mock.push_get_related_result(Ok(vec![
+            RelatedChange {
+                _change_number: 1,
+                _revision_number: 1,
+                subject: None,
+                commit: None,
+                status: None,
+                insertions: None,
+                deletions: None,
+            },
+            RelatedChange {
+                _change_number: 2,
+                _revision_number: 1,
+                subject: None,
+                commit: None,
+                status: None,
+                insertions: None,
+                deletions: None,
+            },
+        ]));
+
+        mock.push_cherry_pick_result(Ok(CherryPickResult {
+            id: "new~100".into(),
+            _number: 100,
+            subject: "Cp1".into(),
+        }));
+        mock.push_get_change_detail_result(Err(DomainError::HttpStatus {
+            status: 500,
+            body: "boom".into(),
+        }));
+        mock.push_cherry_pick_result(Ok(CherryPickResult {
+            id: "new~200".into(),
+            _number: 200,
+            subject: "Cp2".into(),
+        }));
+
+        let server = GerritServer::new(mock);
+
+        let params = CherryPickChainParams {
+            change_id: "2".into(),
+            destination: "main".into(),
+            revision_id: None,
+            keep_reviewers: None,
+            allow_conflicts: None,
+            allow_empty: None,
+            gerrit_base_url: None,
+        };
+        let result = server.cherry_pick_chain(Parameters(params)).await;
+        let text = extract_text(result);
+
+        assert!(
+            text.contains("Partial failure at change 2"),
+            "chain must fail when it cannot read the new change, got: {text}"
+        );
+        assert!(text.contains("200"), "got: {text}");
+        assert!(text.contains("Some changes were cherry-picked successfully"));
+        assert!(
+            !text.contains("Successfully cherry-picked chain"),
+            "chain must not report full success, got: {text}"
+        );
     }
 
     #[tokio::test]
@@ -752,6 +1333,125 @@ mod tests {
     fn test_extract_bugs_empty() {
         let bugs = extract_bugs("No bugs here.");
         assert!(bugs.is_empty());
+    }
+
+    #[test]
+    fn test_extract_bugs_footer_with_b_prefix() {
+        let bugs = extract_bugs("Bug: b/67890");
+        assert_eq!(bugs, vec!["67890"]);
+    }
+
+    #[test]
+    fn test_extract_bugs_space_separated_footer() {
+        let bugs = extract_bugs("Bug: 1 2");
+        assert_eq!(bugs, vec!["1", "2"]);
+    }
+
+    #[test]
+    fn test_extract_bugs_inline_case_insensitive() {
+        let bugs = extract_bugs("Fixed B/123");
+        assert_eq!(bugs, vec!["123"]);
+    }
+
+    #[test]
+    fn test_extract_bugs_inline_no_partial_word() {
+        let bugs = extract_bugs("Fixed fb/123");
+        assert!(bugs.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_query_by_date_rejects_invalid_start_date() {
+        let mock = MockGerritRepository::default();
+        let server = GerritServer::new(mock);
+
+        let params = QueryChangesByDateParams {
+            start_date: "01-2026-01".into(),
+            end_date: "2026-01-31".into(),
+            gerrit_base_url: None,
+            limit: None,
+            project: None,
+            message_substring: None,
+            status: None,
+        };
+        let result = server
+            .query_changes_by_date_and_filters(Parameters(params))
+            .await;
+        assert!(result.is_error.unwrap_or(false));
+        let text = extract_text(result);
+        assert!(text.contains("Invalid start_date format"), "got: {text}");
+    }
+
+    #[tokio::test]
+    async fn test_query_by_date_rejects_invalid_end_date() {
+        let mock = MockGerritRepository::default();
+        let server = GerritServer::new(mock);
+
+        let params = QueryChangesByDateParams {
+            start_date: "2026-01-01".into(),
+            end_date: "31-2026-01".into(),
+            gerrit_base_url: None,
+            limit: None,
+            project: None,
+            message_substring: None,
+            status: None,
+        };
+        let result = server
+            .query_changes_by_date_and_filters(Parameters(params))
+            .await;
+        assert!(result.is_error.unwrap_or(false));
+        let text = extract_text(result);
+        assert!(text.contains("Invalid end_date format"), "got: {text}");
+    }
+
+    #[tokio::test]
+    async fn test_query_by_date_quotes_message_filter() {
+        let mock = MockGerritRepository::default();
+        mock.push_query_changes_result(Ok(vec![]));
+        let server = GerritServer::new(mock.clone());
+
+        let params = QueryChangesByDateParams {
+            start_date: "2026-01-01".into(),
+            end_date: "2026-01-31".into(),
+            gerrit_base_url: None,
+            limit: None,
+            project: None,
+            message_substring: Some("fix bug".into()),
+            status: Some("open".into()),
+        };
+        let result = server
+            .query_changes_by_date_and_filters(Parameters(params))
+            .await;
+        let _ = extract_text(result);
+
+        let query = mock.last_query().expect("query recorded").query;
+        assert!(query.contains("message:\"fix bug\""), "got: {query}");
+    }
+
+    #[tokio::test]
+    async fn test_query_by_date_escapes_quotes_in_message_filter() {
+        let mock = MockGerritRepository::default();
+        mock.push_query_changes_result(Ok(vec![]));
+        let server = GerritServer::new(mock.clone());
+
+        let params = QueryChangesByDateParams {
+            start_date: "2026-01-01".into(),
+            end_date: "2026-01-31".into(),
+            gerrit_base_url: None,
+            limit: None,
+            project: None,
+            message_substring: Some("has \"quotes\"".into()),
+            status: Some("open".into()),
+        };
+        let result = server
+            .query_changes_by_date_and_filters(Parameters(params))
+            .await;
+        let _ = extract_text(result);
+
+        let query = mock.last_query().expect("query recorded").query;
+        assert!(
+            query.contains("message:\"has \\\"quotes\\\"\""),
+            "inner quotes must be escaped, got: {query}"
+        );
     }
 
     #[test]
@@ -1154,6 +1854,115 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_post_draft_comment_sends_range_without_line() {
+        let mock = MockGerritRepository::default();
+        mock.push_post_draft_result(Ok("draft-1".into()));
+        let server = GerritServer::new(mock.clone());
+
+        let params = PostDraftCommentParams {
+            change_id: "123".into(),
+            file_path: "src/lib.rs".into(),
+            line_number: 10,
+            message: "range comment".into(),
+            unresolved: Some(true),
+            gerrit_base_url: None,
+            start_line: Some(10),
+            start_character: Some(0),
+            end_line: Some(12),
+            end_character: Some(4),
+            suggestion: None,
+            in_reply_to: None,
+        };
+        let result = server.post_draft_comment(Parameters(params)).await;
+        let text = extract_text(result);
+        assert!(text.contains("Draft comment posted"), "got: {text}");
+
+        let payload = mock
+            .last_post_draft_payload
+            .read()
+            .unwrap()
+            .clone()
+            .expect("post_draft payload must be captured");
+        let range = payload.range.expect("range must be set");
+        assert_eq!(range.start_line, 10);
+        assert_eq!(range.start_character, 0);
+        assert_eq!(range.end_line, 12);
+        assert_eq!(range.end_character, 4);
+        assert_eq!(payload.line, None, "line must be None when range set");
+        assert_eq!(payload.unresolved, Some(true));
+    }
+
+    #[tokio::test]
+    async fn test_post_draft_comment_embeds_suggestion_block() {
+        let mock = MockGerritRepository::default();
+        mock.push_post_draft_result(Ok("draft-2".into()));
+        let server = GerritServer::new(mock.clone());
+
+        let params = PostDraftCommentParams {
+            change_id: "123".into(),
+            file_path: "src/lib.rs".into(),
+            line_number: 5,
+            message: "please fix".into(),
+            unresolved: None,
+            gerrit_base_url: None,
+            start_line: None,
+            start_character: None,
+            end_line: None,
+            end_character: None,
+            suggestion: Some("fixed = true;".into()),
+            in_reply_to: None,
+        };
+        let result = server.post_draft_comment(Parameters(params)).await;
+        let text = extract_text(result);
+        assert!(text.contains("Draft comment posted"), "got: {text}");
+
+        let payload = mock
+            .last_post_draft_payload
+            .read()
+            .unwrap()
+            .clone()
+            .expect("payload captured");
+        assert!(
+            payload
+                .message
+                .contains("```suggestion\nfixed = true;\n```"),
+            "suggestion block must be embedded in message, got: {}",
+            payload.message
+        );
+        assert_eq!(payload.line, Some(5));
+        assert!(payload.range.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_post_review_comment_sends_labels() {
+        let mock = MockGerritRepository::default();
+        mock.push_post_review_result(Ok(()));
+        let server = GerritServer::new(mock.clone());
+
+        let params = PostReviewCommentParams {
+            change_id: "123".into(),
+            file_path: "src/lib.rs".into(),
+            line_number: 3,
+            message: "nit".into(),
+            unresolved: Some(true),
+            gerrit_base_url: None,
+            labels: Some(BTreeMap::from([("Code-Review".to_string(), -1)])),
+        };
+        let result = server.post_review_comment(Parameters(params)).await;
+        let text = extract_text(result);
+        assert!(text.contains("Review comment posted"), "got: {text}");
+
+        let payload = mock
+            .last_post_review_payload
+            .read()
+            .unwrap()
+            .clone()
+            .expect("payload captured");
+        let labels = payload.labels.expect("labels must be forwarded");
+        assert_eq!(labels.get("Code-Review"), Some(&-1));
+    }
+
+    #[tokio::test]
     async fn test_delete_draft_comment_gerrit_base_url_override_error() {
         let mock = MockGerritRepository::default();
         let server = GerritServer::new(mock);
@@ -1207,6 +2016,7 @@ mod tests {
             reviewer: "r@example.com".into(),
             gerrit_base_url: Some("https://override.example.com".into()),
             state: None,
+            confirmed: None,
         };
         let result = server.add_reviewer(Parameters(params)).await;
         assert!(result.is_error.unwrap_or(false));
@@ -1223,6 +2033,7 @@ mod tests {
             reviewer: "r@example.com".into(),
             gerrit_base_url: Some("https://g.example.com".into()),
             state: Some("BOGUS".into()),
+            confirmed: None,
         };
         let result = server.add_reviewer(Parameters(params)).await;
         assert!(result.is_error.unwrap_or(false));
@@ -1232,6 +2043,79 @@ mod tests {
             !text.contains("Failed to resolve client"),
             "validation error must be reported before client resolution: got: {text}"
         );
+    }
+
+    fn reviewer_ok() -> AddReviewerResult {
+        AddReviewerResult {
+            error: None,
+            reviewers: vec![ReviewerInfo {
+                _account_id: 1,
+                email: Some("dev@example.com".into()),
+            }],
+        }
+    }
+
+    #[tokio::test]
+    pub async fn test_add_reviewer_sends_confirmed_none_by_default() {
+        let mock = MockGerritRepository::default();
+        mock.push_add_reviewer_result(Ok(reviewer_ok()));
+        let server = GerritServer::new(mock.clone());
+
+        let params = AddReviewerParams {
+            change_id: "123".into(),
+            reviewer: "dev".into(),
+            gerrit_base_url: None,
+            state: None,
+            confirmed: None,
+        };
+        let _ = server.add_reviewer(Parameters(params)).await;
+
+        let payload = mock.last_add_reviewer_payload.read().unwrap().clone();
+        let payload = payload.expect("payload captured");
+        assert!(
+            payload.confirmed.is_none(),
+            "confirmed must not be sent by default"
+        );
+    }
+
+    #[tokio::test]
+    pub async fn test_add_reviewer_forwards_confirmed_true() {
+        let mock = MockGerritRepository::default();
+        mock.push_add_reviewer_result(Ok(reviewer_ok()));
+        let server = GerritServer::new(mock.clone());
+
+        let params = AddReviewerParams {
+            change_id: "123".into(),
+            reviewer: "dev".into(),
+            gerrit_base_url: None,
+            state: None,
+            confirmed: Some(true),
+        };
+        let _ = server.add_reviewer(Parameters(params)).await;
+
+        let payload = mock.last_add_reviewer_payload.read().unwrap().clone();
+        let payload = payload.expect("payload captured");
+        assert_eq!(payload.confirmed, Some(true));
+    }
+
+    #[tokio::test]
+    pub async fn test_add_reviewer_forwards_confirmed_false() {
+        let mock = MockGerritRepository::default();
+        mock.push_add_reviewer_result(Ok(reviewer_ok()));
+        let server = GerritServer::new(mock.clone());
+
+        let params = AddReviewerParams {
+            change_id: "123".into(),
+            reviewer: "dev".into(),
+            gerrit_base_url: None,
+            state: None,
+            confirmed: Some(false),
+        };
+        let _ = server.add_reviewer(Parameters(params)).await;
+
+        let payload = mock.last_add_reviewer_payload.read().unwrap().clone();
+        let payload = payload.expect("payload captured");
+        assert_eq!(payload.confirmed, Some(false));
     }
 
     #[tokio::test]
@@ -1271,5 +2155,21 @@ mod tests {
         assert!(result.is_error.unwrap_or(false));
         let text = extract_text(result);
         assert!(text.contains("Failed to resolve client"), "got: {text}");
+    }
+
+    #[tokio::test]
+    async fn test_set_topic_empty_response_reports_deletion() {
+        let mock = MockGerritRepository::default();
+        mock.push_set_topic_result(Ok(None));
+        let server = GerritServer::new(mock);
+
+        let params = SetTopicParams {
+            change_id: "123".into(),
+            topic: String::new(),
+            gerrit_base_url: None,
+        };
+        let result = server.set_topic(Parameters(params)).await;
+        let text = extract_text(result);
+        assert!(text.contains("Topic deleted"), "got: {text}");
     }
 }

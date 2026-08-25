@@ -464,30 +464,68 @@ pub enum ConfigError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::Cell;
+    use std::sync::Mutex;
 
     // --- helpers ---
 
+    /// Serializes access to process environment variables between tests.
+    /// Tests run on parallel threads, and env-based tests must not observe
+    /// each other's temporary values.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    thread_local! {
+        /// True while this thread holds `ENV_LOCK` — makes nested `with_env`
+        /// calls (e.g. `mcp_log_level_wins_over_rust_log`) re-entrant instead
+        /// of deadlocking on the non-reentrant mutex.
+        static ENV_LOCK_HELD: Cell<bool> = const { Cell::new(false) };
+    }
+
     /// Helper that sets an env var for the duration of the closure.
     fn with_env<R>(k: &str, v: &str, f: impl FnOnce() -> R) -> R {
-        // SAFETY: tests run single-threaded, no other thread accesses env vars
+        let nested = ENV_LOCK_HELD.with(Cell::get);
+        // The guard must outlive the closure — declaring it inside the `if`
+        // would drop the lock immediately and un-serialize this section.
+        let _guard = if nested {
+            None
+        } else {
+            let guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            ENV_LOCK_HELD.set(true);
+            Some(guard)
+        };
+        // SAFETY: serialized by ENV_LOCK (or already held by this thread)
         unsafe { std::env::set_var(k, v) };
         let result = f();
-        // SAFETY: cleanup after test, no concurrent access
+        // SAFETY: cleanup, serialized by ENV_LOCK
         unsafe { std::env::remove_var(k) };
+        if !nested {
+            ENV_LOCK_HELD.set(false);
+        }
         result
     }
 
     /// Like `with_env` but also temporarily clears `SSL_CERT_FILE` and
     /// `SSL_CERT_DIR` to avoid interference from system environment.
     fn with_clean_tls_env<R>(k: &str, v: &str, f: impl FnOnce() -> R) -> R {
-        // SAFETY: tests run single-threaded
+        let nested = ENV_LOCK_HELD.with(Cell::get);
+        let _guard = if nested {
+            None
+        } else {
+            let guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            ENV_LOCK_HELD.set(true);
+            Some(guard)
+        };
+        // SAFETY: serialized by ENV_LOCK
         unsafe { std::env::remove_var("SSL_CERT_FILE") };
         unsafe { std::env::remove_var("SSL_CERT_DIR") };
-        // SAFETY: single-threaded
+        // SAFETY: serialized by ENV_LOCK
         unsafe { std::env::set_var(k, v) };
         let result = f();
         // SAFETY: cleanup
         unsafe { std::env::remove_var(k) };
+        if !nested {
+            ENV_LOCK_HELD.set(false);
+        }
         result
     }
 

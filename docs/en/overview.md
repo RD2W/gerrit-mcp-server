@@ -20,14 +20,14 @@ managing accounts, groups, projects, and more, but its raw API is not LLM-friend
 - The API has specific behaviours that need normalisation
 - Rate limiting is needed to protect the Gerrit server
 
-`gerrit-mcp` wraps all of this into 29 clean MCP tools with proper error
+`gerrit-mcp` wraps all of this into 32 clean MCP tools with proper error
 handling, rate limiting, and result formatting.
 
 ---
 
 ## Features
 
-### 29 MCP tools — full Gerrit REST API coverage
+### 32 MCP tools — full Gerrit REST API coverage
 
 | Category | Tools |
 |---|---|
@@ -107,7 +107,7 @@ config for local development and remote deployment.
 
 ## Current status
 
-**v1.3.0.** The core HTTP client, all 29 MCP tools, dual transport, caching, rate
+**v1.4.0.** The core HTTP client, all 32 MCP tools, dual transport, caching, rate
 limiting, TLS, health endpoints, and Docker packaging are implemented and covered
 by **338 tests**. Supports MCP 2026-07-28 protocol (stateless Streamable HTTP,
 protocol negotiation) with legacy 2025-11-25 fallback.

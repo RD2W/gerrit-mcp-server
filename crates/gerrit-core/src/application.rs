@@ -138,6 +138,15 @@ impl<R: GerritRepository> GerritRepository for GerritService<R> {
         self.repo.get_commit(change_id).await
     }
 
+    async fn get_revision_commit(
+        &self,
+        change_id: &str,
+        revision: &str,
+    ) -> Result<RevisionCommitInfo, DomainError> {
+        self.acquire_rate_limit().await?;
+        self.repo.get_revision_commit(change_id, revision).await
+    }
+
     async fn suggest_reviewers(
         &self,
         change_id: &str,
@@ -223,6 +232,11 @@ impl<R: GerritRepository> GerritRepository for GerritService<R> {
         self.repo.revert_submission(change_id, message).await
     }
 
+    async fn set_labels(&self, change_id: &str, payload: &ReviewInput) -> Result<(), DomainError> {
+        self.acquire_rate_limit().await?;
+        self.repo.set_labels(change_id, payload).await
+    }
+
     async fn post_review(
         &self,
         change_id: &str,
@@ -232,15 +246,10 @@ impl<R: GerritRepository> GerritRepository for GerritService<R> {
         self.repo.post_review(change_id, payload).await
     }
 
-    async fn set_labels(&self, change_id: &str, payload: &ReviewInput) -> Result<(), DomainError> {
-        self.acquire_rate_limit().await?;
-        self.repo.set_labels(change_id, payload).await
-    }
-
     async fn post_draft(
         &self,
         change_id: &str,
-        payload: &DraftInput,
+        payload: &CommentInput,
     ) -> Result<String, DomainError> {
         self.acquire_rate_limit().await?;
         self.repo.post_draft(change_id, payload).await

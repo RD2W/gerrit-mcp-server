@@ -294,8 +294,20 @@ impl GerritRepository for GerritClient {
 
     async fn get_commit_message(&self, change_id: &str) -> Result<CommitMessage, DomainError> {
         let cid = Self::percent_encode(change_id);
-        let url = self.url(&format!("/changes/{cid}/revisions/current/commit"));
-        self.get_json(&url).await
+        let url = self.url(&format!("/changes/{cid}/message"));
+        match self.get_json::<CommitMessage>(&url).await {
+            Ok(msg) => Ok(msg),
+            // GET /changes/{id}/message exists only from Gerrit 3.10. On older
+            // instances fall back to the revision commit endpoint, whose
+            // CommitInfo.message already contains the full commit message.
+            Err(DomainError::HttpStatus { status: 404, .. }) => {
+                let commit = self.get_revision_commit(change_id, "current").await?;
+                Ok(CommitMessage {
+                    full_message: commit.message,
+                })
+            }
+            Err(e) => Err(e),
+        }
     }
 
     async fn list_files(&self, change_id: &str) -> Result<BTreeMap<String, FileInfo>, DomainError> {
@@ -353,6 +365,17 @@ impl GerritRepository for GerritClient {
         self.get_json(&url).await
     }
 
+    async fn get_revision_commit(
+        &self,
+        change_id: &str,
+        revision: &str,
+    ) -> Result<RevisionCommitInfo, DomainError> {
+        let cid = Self::percent_encode(change_id);
+        let rev = Self::percent_encode(revision);
+        let url = self.url(&format!("/changes/{cid}/revisions/{rev}/commit"));
+        self.get_json(&url).await
+    }
+
     async fn suggest_reviewers(
         &self,
         change_id: &str,
@@ -382,7 +405,8 @@ impl GerritRepository for GerritClient {
         let cid = Self::percent_encode(change_id);
         let o = Self::build_options_query(options);
         let url = self.url(&format!("/changes/{cid}/submitted_together{o}"));
-        self.get_json(&url).await
+        let response: SubmittedTogetherResponse = self.get_json(&url).await?;
+        Ok(response.into())
     }
 
     async fn create_change(&self, payload: &CreateChangeRequest) -> Result<Change, DomainError> {
@@ -419,10 +443,13 @@ impl GerritRepository for GerritClient {
     ) -> Result<Option<String>, DomainError> {
         let cid = Self::percent_encode(change_id);
         let url = self.url(&format!("/changes/{cid}/topic"));
-        let topic: String = self.put_json(&url, payload).await?;
-        if topic.is_empty() {
+        let text = self.put_text(&url, payload).await?;
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
             Ok(None)
         } else {
+            let topic: String =
+                serde_json::from_str(trimmed).map_err(|e| Self::json_decode_error(e, &text))?;
             Ok(Some(topic))
         }
     }
@@ -484,6 +511,12 @@ impl GerritRepository for GerritClient {
         Ok(resp.revert_changes)
     }
 
+    async fn set_labels(&self, change_id: &str, payload: &ReviewInput) -> Result<(), DomainError> {
+        let cid = Self::percent_encode(change_id);
+        let url = self.url(&format!("/changes/{cid}/revisions/current/review"));
+        self.post_empty(&url, payload).await
+    }
+
     async fn post_review(
         &self,
         change_id: &str,
@@ -494,16 +527,10 @@ impl GerritRepository for GerritClient {
         self.post_empty(&url, payload).await
     }
 
-    async fn set_labels(&self, change_id: &str, payload: &ReviewInput) -> Result<(), DomainError> {
-        let cid = Self::percent_encode(change_id);
-        let url = self.url(&format!("/changes/{cid}/revisions/current/review"));
-        self.post_empty(&url, payload).await
-    }
-
     async fn post_draft(
         &self,
         change_id: &str,
-        payload: &DraftInput,
+        payload: &CommentInput,
     ) -> Result<String, DomainError> {
         let cid = Self::percent_encode(change_id);
         let url = self.url(&format!("/changes/{cid}/revisions/current/drafts"));
@@ -531,7 +558,10 @@ impl GerritRepository for GerritClient {
     ) -> Result<(), DomainError> {
         let cid = Self::percent_encode(change_id);
         let url = self.url(&format!("/changes/{cid}/revisions/current/review"));
-        self.post_empty(&url, payload).await
+        // Gerrit always returns a ReviewResult; parse it to validate the
+        // response instead of silently ignoring the body.
+        let _result: ReviewResult = self.post_json(&url, payload).await?;
+        Ok(())
     }
 
     async fn cherry_pick(
@@ -598,6 +628,14 @@ impl GerritClient {
                 "JSON parse error: {e}\nRaw body (500 chars): {truncated}"
             ))
         })
+    }
+
+    /// Send PUT, return the raw (XSSI-stripped) response text, which may be empty.
+    async fn put_text(&self, url: &str, body: &impl Serialize) -> Result<String, DomainError> {
+        let response = self.put_builder(url, body).send().await?;
+        let response = Self::check_response(response).await?;
+        let text = response.text().await?;
+        Ok(Self::strip_xssi(&text).to_string())
     }
 }
 
@@ -682,6 +720,55 @@ mod tests {
             }
             other => panic!("expected HttpStatus error, got: {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn test_changes_submitted_together_bare_array() {
+        let server = MockServer::start().await;
+
+        let change_json = r#"{"id":"project~branch~12345","_number":12345,"subject":"Test change","status":"NEW","project":"project","branch":"main","owner":{"_account_id":1000},"updated":"2025-01-01 00:00:00"}"#;
+        let body = format!("{XSSI_JSON}[{change_json}]");
+
+        Mock::given(method("GET"))
+            .and(path("/a/changes/35250/submitted_together"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(body))
+            .mount(&server)
+            .await;
+
+        let client = test_client(&format!("{}/a", server.uri()));
+
+        let result = client
+            .changes_submitted_together("35250", &[])
+            .await
+            .unwrap();
+
+        assert_eq!(result.changes.len(), 1);
+        assert_eq!(result.changes[0]._number, 12345);
+        assert_eq!(result.non_visible_changes, 0);
+    }
+
+    #[tokio::test]
+    async fn test_changes_submitted_together_wrapped_object() {
+        let server = MockServer::start().await;
+
+        let change_json = r#"{"id":"project~branch~12345","_number":12345,"subject":"Test change","status":"NEW","project":"project","branch":"main","owner":{"_account_id":1000},"updated":"2025-01-01 00:00:00"}"#;
+        let body = format!("{XSSI_JSON}{{\"changes\":[{change_json}],\"non_visible_changes\":2}}");
+
+        Mock::given(method("GET"))
+            .and(path("/a/changes/35250/submitted_together"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(body))
+            .mount(&server)
+            .await;
+
+        let client = test_client(&format!("{}/a", server.uri()));
+
+        let result = client
+            .changes_submitted_together("35250", &[])
+            .await
+            .unwrap();
+
+        assert_eq!(result.changes.len(), 1);
+        assert_eq!(result.non_visible_changes, 2);
     }
 
     // -- percent_encode ----------------------------------------------------
@@ -832,5 +919,381 @@ mod tests {
             ..ReviewInput::default()
         };
         client.set_labels("123", &payload).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_publish_drafts_posts_review_with_drafts_publish() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/changes/123/revisions/current/review"))
+            .and(body_partial_json(serde_json::json!({
+                "drafts": "PUBLISH_ALL_REVISIONS",
+                "message": "Addressed all comments",
+                "labels": {"Code-Review": 1},
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "labels": {"Code-Review": {"all": []}},
+                "comments": {},
+            })))
+            .mount(&server)
+            .await;
+
+        let client = test_client(&server.uri());
+
+        let payload = PublishDraftsRequest {
+            drafts: DraftHandling::PublishAllRevisions,
+            message: Some("Addressed all comments".into()),
+            labels: Some(BTreeMap::from([("Code-Review".into(), 1)])),
+        };
+        client.publish_drafts("123", &payload).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_post_draft_sends_range_and_unresolved() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("PUT"))
+            .and(path("/changes/123/revisions/current/drafts"))
+            .and(body_partial_json(serde_json::json!({
+                "path": "src/lib.rs",
+                "message": "look at this",
+                "range": {"startLine": 10, "startCharacter": 0, "endLine": 12, "endCharacter": 4},
+                "unresolved": true,
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_string(")]}'\n{\"id\":\"draft-1\"}"))
+            .mount(&server)
+            .await;
+
+        let client = test_client(&server.uri());
+
+        let payload = CommentInput {
+            id: None,
+            path: Some("src/lib.rs".into()),
+            side: None,
+            line: None,
+            range: Some(CommentRange {
+                start_line: 10,
+                start_character: 0,
+                end_line: 12,
+                end_character: 4,
+            }),
+            in_reply_to: None,
+            updated: None,
+            message: "look at this".into(),
+            tag: None,
+            unresolved: Some(true),
+        };
+
+        let draft_id = client.post_draft("123", &payload).await.unwrap();
+        assert_eq!(draft_id, "draft-1");
+    }
+
+    #[tokio::test]
+    async fn test_post_review_sends_labels() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/changes/123/revisions/current/review"))
+            .and(body_partial_json(serde_json::json!({
+                "comments": {
+                    "src/lib.rs": [{
+                        "path": "src/lib.rs",
+                        "line": 5,
+                        "message": "nit",
+                        "unresolved": true,
+                    }]
+                },
+                "labels": {"Code-Review": -1},
+            })))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+
+        let client = test_client(&server.uri());
+
+        let comment = CommentInput {
+            id: None,
+            path: Some("src/lib.rs".into()),
+            side: None,
+            line: Some(5),
+            range: None,
+            in_reply_to: None,
+            updated: None,
+            message: "nit".into(),
+            tag: None,
+            unresolved: Some(true),
+        };
+        let batch = CommentBatchInput {
+            comments: Some(BTreeMap::from([("src/lib.rs".into(), vec![comment])])),
+            omit_duplicate_comments: None,
+            notify: None,
+            labels: Some(BTreeMap::from([("Code-Review".into(), -1)])),
+        };
+
+        client.post_review("123", &batch).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_set_topic_empty_body_returns_none() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("PUT"))
+            .and(path("/changes/123/topic"))
+            .respond_with(ResponseTemplate::new(204))
+            .mount(&server)
+            .await;
+
+        let client = test_client(&server.uri());
+
+        let payload = TopicRequest {
+            topic: String::new(),
+        };
+        let result = client.set_topic("123", &payload).await.unwrap();
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_cherry_pick_sends_flags() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/changes/123/revisions/1/cherrypick"))
+            .and(body_partial_json(serde_json::json!({
+                "destination": "main",
+                "keepReviewers": true,
+                "allowConflicts": true,
+                "allowEmpty": true,
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "new~100",
+                "_number": 100,
+                "subject": "Cp"
+            })))
+            .mount(&server)
+            .await;
+
+        let client = test_client(&server.uri());
+
+        let payload = CherryPickRequest {
+            message: None,
+            destination: "main".into(),
+            parent: None,
+            base: None,
+            notify: None,
+            keep_reviewers: Some(true),
+            allow_conflicts: Some(true),
+            allow_empty: Some(true),
+        };
+        let result = client.cherry_pick("123", "1", &payload).await.unwrap();
+        assert_eq!(result._number, 100);
+    }
+
+    #[tokio::test]
+    async fn test_add_reviewer_does_not_send_confirmed_by_default() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/changes/123/reviewers"))
+            .and(body_partial_json(serde_json::json!({
+                "reviewer": "dev@example.com"
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "reviewers": [{
+                    "_account_id": 1,
+                    "email": "dev@example.com"
+                }]
+            })))
+            .mount(&server)
+            .await;
+
+        let client = test_client(&server.uri());
+
+        let payload = AddReviewerRequest {
+            reviewer: "dev@example.com".into(),
+            confirmed: None,
+            state: None,
+            notify: None,
+        };
+        let result = client.add_reviewer("123", &payload).await.unwrap();
+        assert_eq!(result.reviewers.len(), 1);
+
+        let requests = server
+            .received_requests()
+            .await
+            .expect("no requests received");
+        let body = &requests[0].body;
+        let body_string = String::from_utf8_lossy(body);
+        assert!(
+            !body_string.contains("\"confirmed\""),
+            "request body unexpectedly contains `confirmed`: {body_string}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_set_topic_parses_json_string() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("PUT"))
+            .and(path("/changes/123/topic"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(")]}'\n\"mytopic\""))
+            .mount(&server)
+            .await;
+
+        let client = test_client(&server.uri());
+
+        let payload = TopicRequest {
+            topic: "mytopic".into(),
+        };
+        let result = client.set_topic("123", &payload).await.unwrap();
+        assert_eq!(result, Some("mytopic".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_get_commit_message_uses_message_endpoint() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/changes/123/message"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "full_message": "Fix stuff\n\nDetails here\n\nChange-Id: Iabc123"
+            })))
+            .mount(&server)
+            .await;
+
+        let client = test_client(&server.uri());
+        let result = client.get_commit_message("123").await.unwrap();
+        assert_eq!(
+            result.full_message,
+            "Fix stuff\n\nDetails here\n\nChange-Id: Iabc123"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_commit_message_falls_back_on_404() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/changes/123/message"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path("/changes/123/revisions/current/commit"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "subject": "Fix stuff",
+                "message": "Fix stuff\n\nDetails here\n\nChange-Id: Iabc",
+                "commit": "abcd1234efgh",
+                "author": {"name": "Dev", "email": "dev@example.com", "date": "2026-01-01 00:00:00", "tz": 60},
+                "committer": {"name": "CI", "email": "ci@example.com", "date": "2026-01-01 00:00:00", "tz": 60},
+                "parents": []
+            })))
+            .mount(&server)
+            .await;
+
+        let client = test_client(&server.uri());
+        let result = client.get_commit_message("123").await.unwrap();
+        assert_eq!(
+            result.full_message,
+            "Fix stuff\n\nDetails here\n\nChange-Id: Iabc"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_commit_message_no_fallback_on_non_404() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/changes/123/message"))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path("/changes/123/revisions/current/commit"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "subject": "should not be used",
+                "message": "should not be used",
+                "commit": "1234",
+                "author": {"name": "A", "email": "a@example.com", "date": "2026-01-01 00:00:00", "tz": 60},
+                "committer": {"name": "B", "email": "b@example.com", "date": "2026-01-01 00:00:00", "tz": 60},
+                "parents": []
+            })))
+            .mount(&server)
+            .await;
+
+        let client = test_client(&server.uri());
+        let err = client.get_commit_message("123").await.unwrap_err();
+        assert!(matches!(err, DomainError::HttpStatus { status: 500, .. }));
+
+        let requests = server
+            .received_requests()
+            .await
+            .expect("no requests received");
+        assert!(
+            requests
+                .iter()
+                .all(|r| !r.url.path().ends_with("revisions/current/commit")),
+            "fallback endpoint must not be hit on non-404"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_related_parses_nested_commit_subject() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/changes/123/revisions/current/related"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "changes": [{
+                    "_change_number": 42,
+                    "_revision_number": 1,
+                    "status": "NEW",
+                    "commit": {
+                        "commit": "abc123def456",
+                        "subject": "Parent change"
+                    }
+                }]
+            })))
+            .mount(&server)
+            .await;
+
+        let client = test_client(&server.uri());
+        let related = client.get_related("123", "current").await.unwrap();
+        assert_eq!(related.len(), 1);
+        let entry = &related[0];
+        assert!(entry.subject.is_none(), "flat subject must stay absent");
+        let commit = entry.commit.as_ref().expect("nested commit must parse");
+        assert_eq!(commit.commit, "abc123def456");
+        assert_eq!(
+            commit.subject.as_deref(),
+            Some("Parent change"),
+            "nested commit.subject must be exposed"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_revision_commit_uses_revision_path() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/changes/123/revisions/2/commit"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "subject": "Fix stuff",
+                "message": "Fix stuff\n\nChange-Id: Iabc",
+                "commit": "abcd1234efgh",
+                "author": {"name": "Dev", "email": "dev@example.com", "date": "2026-01-01 00:00:00", "tz": 60},
+                "committer": {"name": "CI", "email": "ci@example.com", "date": "2026-01-01 00:00:00", "tz": 60},
+                "parents": [{"commit": "11112222", "subject": "parent"}]
+            })))
+            .mount(&server)
+            .await;
+
+        let client = test_client(&server.uri());
+        let result = client.get_revision_commit("123", "2").await.unwrap();
+        assert_eq!(result.subject, "Fix stuff");
+        assert_eq!(result.commit, "abcd1234efgh");
+        assert_eq!(result.author.name, "Dev");
+        assert_eq!(result.parents[0].commit, "11112222");
     }
 }

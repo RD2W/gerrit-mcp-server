@@ -549,22 +549,7 @@ async fn test_get_change_detail_pipeline() {
 async fn test_get_commit_message_pipeline() {
     let mock = MockGerritRepository::default();
     mock.push_get_commit_message_result(Ok(CommitMessage {
-        subject: "Fix stuff".into(),
-        message: "Fix stuff\n\nDetails here\n\nChange-Id: Iabc123".into(),
-        commit: "abcd1234efgh5678".into(),
-        author: GitPersonInfo {
-            name: "Dev".into(),
-            email: "dev@example.com".into(),
-            date: "2026-01-01 00:00:00.000000000".into(),
-            tz: 60,
-        },
-        committer: GitPersonInfo {
-            name: "CI".into(),
-            email: "ci@example.com".into(),
-            date: "2026-01-01 00:00:00.000000000".into(),
-            tz: 60,
-        },
-        parents: vec![],
+        full_message: "Fix stuff\n\nDetails here\n\nChange-Id: Iabc123".into(),
     }));
     let server = GerritServer::new(mock);
 
@@ -575,11 +560,10 @@ async fn test_get_commit_message_pipeline() {
     let result = server.get_commit_message(Parameters(params)).await;
     let text = extract_text(result);
 
-    assert!(text.contains("Commit: abcd1234efgh5678"));
-    assert!(text.contains("Subject: Fix stuff"));
-    assert!(text.contains("Details here"));
-    assert!(text.contains("Author: Dev <dev@example.com>"));
-    assert!(text.contains("Committer: CI <ci@example.com>"));
+    assert_eq!(
+        text, "Fix stuff\n\nDetails here\n\nChange-Id: Iabc123",
+        "commit message must be returned verbatim"
+    );
 }
 
 #[tokio::test]
@@ -760,6 +744,7 @@ async fn test_add_reviewer_pipeline() {
         reviewer: "new-reviewer@test.com".into(),
         gerrit_base_url: None,
         state: None,
+        confirmed: None,
     };
     let result = server.add_reviewer(Parameters(params)).await;
     let text = extract_text(result);
@@ -782,6 +767,7 @@ async fn test_add_reviewer_error() {
         reviewer: "unknown@test.com".into(),
         gerrit_base_url: None,
         state: None,
+        confirmed: None,
     };
     let result = server.add_reviewer(Parameters(params)).await;
     let text = extract_text(result);
@@ -1075,14 +1061,29 @@ async fn test_publish_drafts_pipeline() {
 
     let params = PublishDraftsParams {
         change_id: "123".into(),
-        message: None,
-        labels: None,
+        message: Some("Addressed all comments".into()),
+        labels: Some(BTreeMap::from([("Code-Review".into(), 1)])),
         gerrit_base_url: None,
     };
     let result = server.publish_drafts(Parameters(params)).await;
     let text = extract_text(result);
 
     assert_eq!(text, "All drafts published.");
+    // The handler must always send drafts explicitly — Gerrit's "Set Review"
+    // endpoint defaults to KEEP, which returns success without publishing.
+    let captured = server
+        .repo
+        .last_publish_drafts_payload
+        .read()
+        .unwrap()
+        .clone()
+        .expect("publish_drafts must record the payload");
+    assert_eq!(captured.drafts, DraftHandling::PublishAllRevisions);
+    assert_eq!(captured.message.as_deref(), Some("Addressed all comments"));
+    assert_eq!(
+        captured.labels,
+        Some(BTreeMap::from([("Code-Review".into(), 1)]))
+    );
 }
 
 #[tokio::test]
@@ -1146,10 +1147,20 @@ async fn test_cherry_pick_chain_pipeline() {
         RelatedChange {
             _change_number: 1,
             _revision_number: 1,
+            subject: None,
+            commit: None,
+            status: None,
+            insertions: None,
+            deletions: None,
         },
         RelatedChange {
             _change_number: 2,
             _revision_number: 1,
+            subject: None,
+            commit: None,
+            status: None,
+            insertions: None,
+            deletions: None,
         },
     ]));
     mock.push_cherry_pick_result(Ok(CherryPickResult {
@@ -1206,8 +1217,8 @@ async fn test_cherry_pick_chain_pipeline() {
             email: None,
         },
         updated: "now".into(),
-        current_revision: None,
-        current_revision_number: None,
+        current_revision: Some("rev101".into()),
+        current_revision_number: Some(1),
         revisions: BTreeMap::new(),
         labels: BTreeMap::new(),
         reviewers: None,
@@ -1241,10 +1252,20 @@ async fn test_cherry_pick_chain_partial_failure() {
         RelatedChange {
             _change_number: 1,
             _revision_number: 1,
+            subject: None,
+            commit: None,
+            status: None,
+            insertions: None,
+            deletions: None,
         },
         RelatedChange {
             _change_number: 2,
             _revision_number: 1,
+            subject: None,
+            commit: None,
+            status: None,
+            insertions: None,
+            deletions: None,
         },
     ]));
     mock.push_cherry_pick_result(Err(DomainError::HttpStatus {
@@ -1317,6 +1338,7 @@ async fn test_invalid_add_reviewer_state() {
         reviewer: "someone@test.com".into(),
         gerrit_base_url: None,
         state: Some("INVALID".into()),
+        confirmed: None,
     };
     let result = server.add_reviewer(Parameters(params)).await;
     let text = extract_text(result);

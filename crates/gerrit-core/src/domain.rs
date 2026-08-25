@@ -161,15 +161,8 @@ pub struct Message {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct CommitMessage {
-    pub subject: String,
-    pub message: String,
-    pub commit: String,
-    pub author: GitPersonInfo,
-    pub committer: GitPersonInfo,
-    #[serde(default)]
-    pub parents: Vec<CommitParent>,
+    pub full_message: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -261,6 +254,24 @@ pub struct RelatedChange {
     pub _change_number: u64,
     #[serde(rename = "_revision_number")]
     pub _revision_number: u64,
+    #[serde(default)]
+    pub subject: Option<String>,
+    #[serde(default)]
+    pub commit: Option<RelatedCommit>,
+    #[serde(default)]
+    pub status: Option<String>,
+    #[serde(default)]
+    pub insertions: Option<i64>,
+    #[serde(default)]
+    pub deletions: Option<i64>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelatedCommit {
+    pub commit: String,
+    #[serde(default)]
+    pub subject: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -279,8 +290,32 @@ pub struct RelatedChanges {
 pub struct SubmittedTogether {
     #[serde(default)]
     pub changes: Vec<Change>,
-    #[serde(default)]
+    // Gerrit uses the literal snake_case key `non_visible_changes` in JSON,
+    // so the explicit rename overrides the camelCase default.
+    #[serde(default, rename = "non_visible_changes")]
     pub non_visible_changes: u64,
+}
+
+/// Raw `submitted_together` response which can be one of two shapes:
+/// a bare JSON array of `ChangeInfo` (all changes visible) or an object
+/// with `changes`/`non_visible_changes` (some changes not visible).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum SubmittedTogetherResponse {
+    Changes(Vec<Change>),
+    Wrapped(SubmittedTogether),
+}
+
+impl From<SubmittedTogetherResponse> for SubmittedTogether {
+    fn from(response: SubmittedTogetherResponse) -> Self {
+        match response {
+            SubmittedTogetherResponse::Changes(changes) => Self {
+                changes,
+                non_visible_changes: 0,
+            },
+            SubmittedTogetherResponse::Wrapped(wrapped) => wrapped,
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -346,6 +381,22 @@ pub struct CommitInfo {
 }
 
 // ---------------------------------------------------------------------------
+// RevisionCommitInfo (full commit info for a specific revision)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RevisionCommitInfo {
+    pub subject: String,
+    pub message: String,
+    pub commit: String,
+    pub author: GitPersonInfo,
+    pub committer: GitPersonInfo,
+    #[serde(default)]
+    pub parents: Vec<CommitParent>,
+}
+
+// ---------------------------------------------------------------------------
 // QueryParams (for mock tracking / transport)
 // ---------------------------------------------------------------------------
 
@@ -404,25 +455,6 @@ pub struct ReviewInput {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct DraftInput {
-    pub path: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub line: Option<u64>,
-    pub message: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub side: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub parent: Option<u32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub in_reply_to: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub updated: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tag: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct CommentRange {
     #[serde(default)]
     pub start_line: u64,
@@ -446,6 +478,12 @@ pub struct CherryPickRequest {
     pub base: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notify: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub keep_reviewers: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allow_conflicts: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allow_empty: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -493,11 +531,44 @@ pub struct SubmitRequest {
     pub notify: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+/// How Gerrit's "Set Review" endpoint should handle draft comments.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum DraftHandling {
+    /// Keep drafts unpublished (Gerrit's default when the field is omitted).
+    Keep,
+    /// Publish drafts, but only on the current revision.
+    Publish,
+    /// Publish drafts on every revision of the change.
+    PublishAllRevisions,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PublishDraftsRequest {
+    /// Draft handling action for the "Set Review" POST. Must be `Keep` to keep
+    /// drafts unpublished — Gerrit defaults to `KEEP` when the field is
+    /// omitted, which silently returns success while leaving comments in draft.
+    /// The reference client uses `PublishAllRevisions` so drafts from every
+    /// revision are published.
+    pub drafts: DraftHandling,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub notify: Option<String>,
+    pub message: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub labels: Option<BTreeMap<String, i32>>,
+}
+
+/// Response of Gerrit's "Set Review" endpoint
+/// (`POST /changes/{id}/revisions/current/review`).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewResult {
+    /// Label votes set by this review, keyed by label name.
+    #[serde(default)]
+    pub labels: BTreeMap<String, LabelInfo>,
+    /// Comments attached by this review, keyed by file path.
+    #[serde(default)]
+    pub comments: BTreeMap<String, Vec<Comment>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -506,11 +577,11 @@ pub struct CommentBatchInput {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub comments: Option<BTreeMap<String, Vec<CommentInput>>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub drafts: Option<BTreeMap<String, Vec<DraftInput>>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub omit_duplicate_comments: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notify: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub labels: Option<BTreeMap<String, i32>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -575,6 +646,12 @@ pub trait GerritRepository: Send + Sync {
 
     async fn get_commit(&self, change_id: &str) -> Result<CommitInfo, DomainError>;
 
+    async fn get_revision_commit(
+        &self,
+        change_id: &str,
+        revision: &str,
+    ) -> Result<RevisionCommitInfo, DomainError>;
+
     async fn suggest_reviewers(
         &self,
         change_id: &str,
@@ -637,7 +714,7 @@ pub trait GerritRepository: Send + Sync {
     async fn post_draft(
         &self,
         change_id: &str,
-        payload: &DraftInput,
+        payload: &CommentInput,
     ) -> Result<String, DomainError>;
 
     async fn delete_draft(&self, change_id: &str, draft_id: &str) -> Result<(), DomainError>;
@@ -782,6 +859,53 @@ mod tests {
         assert_eq!(detail.topic, None);
     }
 
+    // -----------------------------------------------------------------------
+    // Serialization tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn comment_input_serializes_range_and_unresolved() {
+        let input = CommentInput {
+            id: None,
+            path: Some("src/lib.rs".into()),
+            side: None,
+            line: None,
+            range: Some(CommentRange {
+                start_line: 10,
+                start_character: 0,
+                end_line: 12,
+                end_character: 4,
+            }),
+            in_reply_to: None,
+            updated: None,
+            message: "look at this".into(),
+            tag: None,
+            unresolved: Some(true),
+        };
+        let json = serde_json::to_value(&input).unwrap();
+        assert_eq!(json["range"]["startLine"], 10);
+        assert_eq!(json["range"]["endLine"], 12);
+        assert_eq!(json["range"]["startCharacter"], 0);
+        assert_eq!(json["range"]["endCharacter"], 4);
+        assert_eq!(json["unresolved"], true);
+        assert!(
+            json.get("line").is_none(),
+            "line must be absent when range set"
+        );
+    }
+
+    #[test]
+    fn comment_batch_serializes_labels() {
+        let batch = CommentBatchInput {
+            comments: None,
+            omit_duplicate_comments: None,
+            notify: None,
+            labels: Some(BTreeMap::from([("Code-Review".to_string(), -1)])),
+        };
+        let json = serde_json::to_value(&batch).unwrap();
+        assert_eq!(json["labels"]["Code-Review"], -1);
+    }
+
     #[test]
     fn test_change_deserialize_with_reviewers() {
         let json = r#"{
@@ -830,6 +954,54 @@ mod tests {
     }
 
     #[test]
+    fn test_submitted_together_response_bare_array() {
+        // Gerrit form 1: bare JSON array of ChangeInfo (all changes visible).
+        let json = r#"[
+            {
+                "id": "project~branch~12345",
+                "_number": 12345,
+                "subject": "First change",
+                "status": "NEW",
+                "project": "my-project",
+                "branch": "main",
+                "owner": {"_account_id": 1000},
+                "updated": "2025-01-01 00:00:00"
+            }
+        ]"#;
+
+        let response: SubmittedTogetherResponse = serde_json::from_str(json).unwrap();
+        let submitted: SubmittedTogether = response.into();
+        assert_eq!(submitted.changes.len(), 1);
+        assert_eq!(submitted.changes[0]._number, 12345);
+        assert_eq!(submitted.non_visible_changes, 0);
+    }
+
+    #[test]
+    fn test_submitted_together_response_wrapped_object() {
+        // Gerrit form 2: object with changes + non_visible_changes (some hidden).
+        let json = r#"{
+            "changes": [
+                {
+                    "id": "project~branch~12345",
+                    "_number": 12345,
+                    "subject": "First change",
+                    "status": "NEW",
+                    "project": "my-project",
+                    "branch": "main",
+                    "owner": {"_account_id": 1000},
+                    "updated": "2025-01-01 00:00:00"
+                }
+            ],
+            "non_visible_changes": 2
+        }"#;
+
+        let response: SubmittedTogetherResponse = serde_json::from_str(json).unwrap();
+        let submitted: SubmittedTogether = response.into();
+        assert_eq!(submitted.changes.len(), 1);
+        assert_eq!(submitted.non_visible_changes, 2);
+    }
+
+    #[test]
     fn review_input_serializes_labels_and_message_without_comments() {
         let input = ReviewInput {
             message: Some("Trigger CI".into()),
@@ -858,5 +1030,62 @@ mod tests {
         };
         let json = serde_json::to_value(&input).unwrap();
         assert_eq!(json["labels"]["Code-Review"], -1);
+    }
+
+    #[test]
+    fn publish_drafts_request_always_sends_drafts_publish() {
+        let req = PublishDraftsRequest {
+            drafts: DraftHandling::PublishAllRevisions,
+            message: None,
+            labels: None,
+        };
+        let json = serde_json::to_value(&req).unwrap();
+        // Gerrit's "Set Review" endpoint defaults `drafts` to KEEP, which returns
+        // success without publishing — so it must be sent explicitly.
+        assert_eq!(json["drafts"], "PUBLISH_ALL_REVISIONS");
+        // Optional fields are omitted when absent (skip_serializing_if).
+        assert!(json.get("message").is_none());
+        assert!(json.get("labels").is_none());
+        assert!(json.get("notify").is_none());
+    }
+
+    #[test]
+    fn publish_drafts_request_serializes_message_and_labels() {
+        let req = PublishDraftsRequest {
+            drafts: DraftHandling::PublishAllRevisions,
+            message: Some("Addressed all comments".into()),
+            labels: Some(BTreeMap::from([("Code-Review".into(), 1)])),
+        };
+        let json = serde_json::to_value(&req).unwrap();
+        assert_eq!(json["drafts"], "PUBLISH_ALL_REVISIONS");
+        assert_eq!(json["message"], "Addressed all comments");
+        assert_eq!(json["labels"]["Code-Review"], 1);
+    }
+
+    #[test]
+    fn review_result_parses_real_set_review_response() {
+        let json = serde_json::json!({
+            "labels": {
+                "Code-Review": {
+                    "all": [
+                        {"_account_id": 1, "name": "Reviewer", "value": 1}
+                    ]
+                }
+            },
+            "comments": {
+                "src/main.rs": [
+                    {
+                        "id": "c1",
+                        "line": 10,
+                        "message": "Looks good",
+                        "author": {"_account_id": 1, "name": "Reviewer"},
+                        "updated": "2026-08-24 10:00:00.000000000"
+                    }
+                ]
+            }
+        });
+        let result: ReviewResult = serde_json::from_value(json).unwrap();
+        assert_eq!(result.labels["Code-Review"].all.len(), 1);
+        assert_eq!(result.comments["src/main.rs"].len(), 1);
     }
 }

@@ -4,6 +4,74 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to
 follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] — 2026-08-25
+
+### Added
+
+- **3 new core Gerrit API tools** — `get_revision_commit` (full commit object
+  for a revision), `get_related_changes` (relation-chain panel with
+  subject/status), `get_git_parent_changes` (changes that are parents of a
+  change via the `parentof:` query). All pure core API; plugin tools remain
+  out of scope.
+
+### Changed
+
+- **Minimum supported Rust version raised to 1.98** — the project and the
+  published Docker image are now built with Rust 1.98 (edition 2024).
+
+### Fixed
+
+- **`add_reviewer` no longer bypasses server confirmation policy** — the tool
+  no longer sends `confirmed: true` unconditionally. `confirmed` is now an
+  optional parameter (default: not sent, like the reference client), so
+  `addreviewer.maxWithoutConfirmation` applies normally unless the caller
+  explicitly requests confirmed status.
+
+- **Gerrit API parity fixes** — draft comments now send `unresolved`/`range`/
+  embedded `` ```suggestion `` blocks and review comments forward `labels`;
+  deleting a topic (204 empty body) no longer errors; `get_change_details`
+  extracts bugs from the current revision; cherry-pick tools forward
+  `keep_reviewers`/`allow_conflicts`/`allow_empty` and chain cherry-picks use
+  the current revision SHA as `base`; `query_changes_by_date_and_filters`
+  validates both dates and quotes the `message:` filter; bug extraction
+  matches the reference implementation (footer `b/` ids, space-separated
+  lists, case-insensitive inline `b/NNN`).
+
+  The legacy `suggestion:`-prefixed `message` special case is removed — use
+  the dedicated `suggestion` argument instead, which embeds a
+  `` ```suggestion `` block.
+
+- **`get_commit_message` works on Gerrit < 3.10** — when `GET /changes/{id}/message`
+  (added in Gerrit 3.10) returns 404, the tool now falls back to
+  `GET /changes/{id}/revisions/current/commit` and returns `CommitInfo.message`
+  unchanged. Verbatim contract on 3.10+ is preserved.
+
+- **`get_commit_message` returns the verbatim commit message** — the tool now
+  reads `GET /changes/{id}/message` and returns `full_message` as-is, instead of
+  a reformatted `CommitInfo` summary with synthetic headers and 8-character
+  truncated parent SHAs.
+
+- **`changes_submitted_together` accepts both Gerrit response shapes** — Gerrit's
+  `GET /changes/{id}/submitted_together` returns either a bare JSON array of
+  `ChangeInfo` (all changes visible) or an object with `changes` /
+  `non_visible_changes` (some changes not visible). Previously the client only
+  deserialized the object shape, so the tool failed with
+  `JSON parse error: invalid type: map, expected a sequence` (as observed on
+  change 35250). The response is now parsed via an untagged
+  `SubmittedTogetherResponse` enum that accepts both forms and normalized to
+  `SubmittedTogether` (the array form maps `non_visible_changes` to 0).
+
+- **`publish_drafts` now actually publishes drafts** — the tool posts to Gerrit's
+  "Set Review" endpoint (`POST /changes/{id}/revisions/current/review`) with
+  `"drafts": "PUBLISH_ALL_REVISIONS"`, and now forwards the optional `message` and
+  `labels` arguments. Previously the request body was empty and ignored the
+  message/labels params; Gerrit defaults the `drafts` field to `KEEP` (see the
+  `ReviewInput` source: *"If not set, the default is `KEEP`"*), so the endpoint
+  returned success while leaving the draft comments unpublished ("false success").
+  `PUBLISH_ALL_REVISIONS` (matching the reference Python client) publishes drafts
+  from every revision of the change, not just the current one. The success
+  message is only accurate now.
+
 ## [1.3.0] — 2026-08-19
 
 ### Added

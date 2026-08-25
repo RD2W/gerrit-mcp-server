@@ -152,13 +152,13 @@ compilation issues that tests might miss.
 
 Releases are automated via `.github/workflows/release.yml`:
 
-1. Push a tag like `v1.3.0`
+1. Push a tag like `v1.4.0`
 2. CI builds multi-arch Docker images and creates a GitHub Release
 3. Binary artifacts are attached to the release
 
 Manual release steps (for debugging the workflow):
 
 ```bash
-docker build -t gerrit-mcp:v1.3.0 .
-docker tag gerrit-mcp:v1.3.0 gerrit-mcp:latest
+docker build -t gerrit-mcp:v1.4.0 .
+docker tag gerrit-mcp:v1.4.0 gerrit-mcp:latest
 ```

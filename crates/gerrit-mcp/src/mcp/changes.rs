@@ -12,9 +12,9 @@ use crate::health::metrics;
 use crate::mcp::GerritServer;
 use crate::mcp::tools::*;
 use crate::mcp::{
-    DEFAULT_STATUS_MERGED, GERRIT_OPTION_CURRENT_COMMIT, GERRIT_OPTION_CURRENT_REVISION,
-    GERRIT_OPTION_DETAILED_LABELS, REVIEWER_STATE_REVIEWER, extract_bugs, format_changes_output,
-    sort_by_date,
+    DEFAULT_REVISION, DEFAULT_STATUS_MERGED, GERRIT_OPTION_CURRENT_COMMIT,
+    GERRIT_OPTION_CURRENT_REVISION, GERRIT_OPTION_DETAILED_LABELS, REVIEWER_STATE_REVIEWER,
+    extract_bugs, format_changes_output, sort_by_date,
 };
 
 pub async fn query_changes<R: GerritRepository + Send + Sync + 'static>(
@@ -46,6 +46,12 @@ pub async fn query_changes_by_date_and_filters<R: GerritRepository + Send + Sync
     server: &GerritServer<R>,
     params: QueryChangesByDateParams,
 ) -> CallToolResult {
+    let start_date = match chrono::NaiveDate::parse_from_str(&params.start_date, "%Y-%m-%d") {
+        Ok(d) => d,
+        Err(e) => return server.error(format!("Invalid start_date format: {e}")),
+    };
+    let start_str = start_date.format("%Y-%m-%d").to_string();
+
     let end_date = match chrono::NaiveDate::parse_from_str(&params.end_date, "%Y-%m-%d") {
         Ok(d) => d,
         Err(e) => return server.error(format!("Invalid end_date format: {e}")),
@@ -59,14 +65,15 @@ pub async fn query_changes_by_date_and_filters<R: GerritRepository + Send + Sync
     let status = params.status.as_deref().unwrap_or(DEFAULT_STATUS_MERGED);
     let mut query = format!(
         "status:{} after:{} before:{}",
-        status, params.start_date, end_plus_one
+        status, start_str, end_plus_one
     );
 
     if let Some(ref project) = params.project {
         query.push_str(&format!(" project:{}", project));
     }
     if let Some(ref msg) = params.message_substring {
-        query.push_str(&format!(" message:{}", msg));
+        let escaped = msg.replace('"', "\\\"");
+        query.push_str(&format!(" message:\"{}\"", escaped));
     }
 
     let opts = Vec::new();
@@ -121,9 +128,11 @@ pub async fn get_change_details<R: GerritRepository + Send + Sync + 'static>(
             }
 
             let commit_msg = detail
-                .revisions
-                .values()
-                .find_map(|r| r.commit.as_ref().map(|c| c.message.clone()))
+                .current_revision
+                .as_ref()
+                .and_then(|k| detail.revisions.get(k))
+                .and_then(|r| r.commit.as_ref())
+                .map(|c| c.message.clone())
                 .unwrap_or_default();
             let bugs = extract_bugs(&commit_msg);
             if !bugs.is_empty() {
@@ -181,31 +190,7 @@ pub async fn get_commit_message<R: GerritRepository + Send + Sync + 'static>(
     };
     let result = repo.get_commit_message(&params.change_id).await;
     match result {
-        Ok(msg) => {
-            let mut lines = Vec::new();
-            lines.push(format!("Commit: {}", msg.commit));
-            lines.push(format!(
-                "Author: {} <{}> {}",
-                msg.author.name, msg.author.email, msg.author.date
-            ));
-            lines.push(format!(
-                "Committer: {} <{}> {}",
-                msg.committer.name, msg.committer.email, msg.committer.date
-            ));
-            if !msg.parents.is_empty() {
-                let parents: Vec<String> = msg
-                    .parents
-                    .iter()
-                    .map(|p| p.commit[..8.min(p.commit.len())].to_string())
-                    .collect();
-                lines.push(format!("Parents: {}", parents.join(", ")));
-            }
-            lines.push(String::new());
-            lines.push(format!("Subject: {}", msg.subject));
-            lines.push(String::new());
-            lines.push(msg.message.clone());
-            server.text(lines.join("\n"))
-        }
+        Ok(msg) => server.text(msg.full_message),
         Err(e) => server.error(format!("Failed to get commit message: {e}")),
     }
 }
@@ -252,6 +237,102 @@ pub async fn get_bugs_from_cl<R: GerritRepository + Send + Sync + 'static>(
             }
         }
         Err(e) => server.error(format!("Failed to get bugs from CL: {e}")),
+    }
+}
+
+pub async fn get_revision_commit<R: GerritRepository + Send + Sync + 'static>(
+    server: &GerritServer<R>,
+    params: GetRevisionCommitParams,
+) -> CallToolResult {
+    let repo = match server.resolve_repo(params.gerrit_base_url.as_deref()) {
+        Ok(r) => r,
+        Err(e) => return e,
+    };
+    let revision = params.revision_id.as_deref().unwrap_or(DEFAULT_REVISION);
+    let result = repo.get_revision_commit(&params.change_id, revision).await;
+    match result {
+        Ok(c) => {
+            let mut lines = Vec::new();
+            lines.push(format!("Commit: {}", c.commit));
+            lines.push(format!(
+                "Author: {} <{}> {}",
+                c.author.name, c.author.email, c.author.date
+            ));
+            lines.push(format!(
+                "Committer: {} <{}> {}",
+                c.committer.name, c.committer.email, c.committer.date
+            ));
+            if !c.parents.is_empty() {
+                let parents: Vec<String> = c.parents.iter().map(|p| p.commit.clone()).collect();
+                lines.push(format!("Parents: {}", parents.join(", ")));
+            }
+            lines.push(String::new());
+            lines.push(format!("Subject: {}", c.subject));
+            lines.push(String::new());
+            lines.push(c.message.clone());
+            server.text(lines.join("\n"))
+        }
+        Err(e) => server.error(format!("Failed to get revision commit: {e}")),
+    }
+}
+
+pub async fn get_related_changes<R: GerritRepository + Send + Sync + 'static>(
+    server: &GerritServer<R>,
+    params: GetRelatedChangesParams,
+) -> CallToolResult {
+    let repo = match server.resolve_repo(params.gerrit_base_url.as_deref()) {
+        Ok(r) => r,
+        Err(e) => return e,
+    };
+    let revision = params.revision_id.as_deref().unwrap_or(DEFAULT_REVISION);
+    let result = repo.get_related(&params.change_id, revision).await;
+    match result {
+        Ok(related) => {
+            if related.is_empty() {
+                return server.text(format!(
+                    "No related changes found for {}.",
+                    params.change_id
+                ));
+            }
+            let mut lines = vec![format!("Related changes for {}:", params.change_id)];
+            for rc in &related {
+                let subject = rc
+                    .subject
+                    .clone()
+                    .or_else(|| rc.commit.as_ref().and_then(|c| c.subject.clone()))
+                    .unwrap_or_else(|| "no subject".into());
+                let status = rc.status.clone().unwrap_or_default();
+                lines.push(format!(
+                    "- {} ({}): {} [{}]",
+                    rc._change_number, rc._revision_number, subject, status
+                ));
+            }
+            server.text(lines.join("\n"))
+        }
+        Err(e) => server.error(format!("Failed to get related changes: {e}")),
+    }
+}
+
+pub async fn get_git_parent_changes<R: GerritRepository + Send + Sync + 'static>(
+    server: &GerritServer<R>,
+    params: GetGitParentChangesParams,
+) -> CallToolResult {
+    let repo = match server.resolve_repo(params.gerrit_base_url.as_deref()) {
+        Ok(r) => r,
+        Err(e) => return e,
+    };
+    let query = format!("parentof:{}", params.change_id);
+    let limit = params.limit.unwrap_or(10);
+    let result = repo.query_changes(&query, Some(limit), &[]).await;
+    match result {
+        Ok(changes) => {
+            if changes.is_empty() {
+                server.text(format!("No parent changes found for {}.", params.change_id))
+            } else {
+                server.text(format_changes_output(&changes))
+            }
+        }
+        Err(e) => server.error(format!("Failed to get parent changes: {e}")),
     }
 }
 

@@ -3,7 +3,7 @@
 
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Mutex, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 
 use super::*;
 
@@ -11,38 +11,90 @@ use super::*;
 ///
 /// Push expected results via `push_X` methods before calling the corresponding
 /// trait method. Each call pops one result from the queue.
+///
+/// Cloning shares inner state (result queues and captured payloads) via `Arc`,
+/// so a clone moved into a server can have its captured payloads inspected
+/// through the original handle.
 #[allow(clippy::type_complexity)]
-#[derive(Default)]
+#[derive(Clone)]
 pub struct MockGerritRepository {
-    pub query_changes_results: Mutex<Vec<Result<Vec<Change>, DomainError>>>,
-    pub query_changes_call_count: AtomicUsize,
-    pub last_query: RwLock<Option<QueryParams>>,
+    pub query_changes_results: Arc<Mutex<Vec<Result<Vec<Change>, DomainError>>>>,
+    pub query_changes_call_count: Arc<AtomicUsize>,
+    pub last_query: Arc<RwLock<Option<QueryParams>>>,
 
-    pub get_change_detail_results: Mutex<Vec<Result<ChangeDetail, DomainError>>>,
-    pub get_commit_message_results: Mutex<Vec<Result<CommitMessage, DomainError>>>,
-    pub list_files_results: Mutex<Vec<Result<BTreeMap<String, FileInfo>, DomainError>>>,
-    pub get_diff_results: Mutex<Vec<Result<String, DomainError>>>,
-    pub list_comments_results: Mutex<Vec<Result<BTreeMap<String, Vec<Comment>>, DomainError>>>,
-    pub list_drafts_results: Mutex<Vec<Result<BTreeMap<String, Vec<DraftComment>>, DomainError>>>,
-    pub get_commit_results: Mutex<Vec<Result<CommitInfo, DomainError>>>,
-    pub suggest_reviewers_results: Mutex<Vec<Result<Vec<SuggestedReviewer>, DomainError>>>,
-    pub changes_submitted_together_results: Mutex<Vec<Result<SubmittedTogether, DomainError>>>,
-    pub create_change_results: Mutex<Vec<Result<Change, DomainError>>>,
-    pub add_reviewer_results: Mutex<Vec<Result<AddReviewerResult, DomainError>>>,
-    pub set_ready_results: Mutex<Vec<Result<(), DomainError>>>,
-    pub set_wip_results: Mutex<Vec<Result<(), DomainError>>>,
-    pub set_topic_results: Mutex<Vec<Result<Option<String>, DomainError>>>,
-    pub abandon_change_results: Mutex<Vec<Result<Change, DomainError>>>,
-    pub revert_change_results: Mutex<Vec<Result<Change, DomainError>>>,
-    pub revert_submission_results: Mutex<Vec<Result<Vec<Change>, DomainError>>>,
-    pub post_review_results: Mutex<Vec<Result<(), DomainError>>>,
-    pub set_labels_results: Mutex<Vec<Result<(), DomainError>>>,
-    pub post_draft_results: Mutex<Vec<Result<String, DomainError>>>,
-    pub delete_draft_results: Mutex<Vec<Result<(), DomainError>>>,
-    pub publish_drafts_results: Mutex<Vec<Result<(), DomainError>>>,
-    pub cherry_pick_results: Mutex<Vec<Result<CherryPickResult, DomainError>>>,
-    pub get_related_results: Mutex<Vec<Result<Vec<RelatedChange>, DomainError>>>,
-    pub submit_change_results: Mutex<Vec<Result<SubmitResult, DomainError>>>,
+    pub get_change_detail_results: Arc<Mutex<Vec<Result<ChangeDetail, DomainError>>>>,
+    pub get_commit_message_results: Arc<Mutex<Vec<Result<CommitMessage, DomainError>>>>,
+    pub list_files_results: Arc<Mutex<Vec<Result<BTreeMap<String, FileInfo>, DomainError>>>>,
+    pub get_diff_results: Arc<Mutex<Vec<Result<String, DomainError>>>>,
+    pub list_comments_results: Arc<Mutex<Vec<Result<BTreeMap<String, Vec<Comment>>, DomainError>>>>,
+    pub list_drafts_results:
+        Arc<Mutex<Vec<Result<BTreeMap<String, Vec<DraftComment>>, DomainError>>>>,
+    pub get_commit_results: Arc<Mutex<Vec<Result<CommitInfo, DomainError>>>>,
+    pub get_revision_commit_results: Arc<Mutex<Vec<Result<RevisionCommitInfo, DomainError>>>>,
+    pub suggest_reviewers_results: Arc<Mutex<Vec<Result<Vec<SuggestedReviewer>, DomainError>>>>,
+    pub changes_submitted_together_results: Arc<Mutex<Vec<Result<SubmittedTogether, DomainError>>>>,
+    pub create_change_results: Arc<Mutex<Vec<Result<Change, DomainError>>>>,
+    pub add_reviewer_results: Arc<Mutex<Vec<Result<AddReviewerResult, DomainError>>>>,
+    pub last_add_reviewer_payload: Arc<RwLock<Option<AddReviewerRequest>>>,
+    pub set_ready_results: Arc<Mutex<Vec<Result<(), DomainError>>>>,
+    pub set_wip_results: Arc<Mutex<Vec<Result<(), DomainError>>>>,
+    pub set_topic_results: Arc<Mutex<Vec<Result<Option<String>, DomainError>>>>,
+    pub abandon_change_results: Arc<Mutex<Vec<Result<Change, DomainError>>>>,
+    pub revert_change_results: Arc<Mutex<Vec<Result<Change, DomainError>>>>,
+    pub revert_submission_results: Arc<Mutex<Vec<Result<Vec<Change>, DomainError>>>>,
+    pub post_review_results: Arc<Mutex<Vec<Result<(), DomainError>>>>,
+    pub set_labels_results: Arc<Mutex<Vec<Result<(), DomainError>>>>,
+    pub post_draft_results: Arc<Mutex<Vec<Result<String, DomainError>>>>,
+    pub delete_draft_results: Arc<Mutex<Vec<Result<(), DomainError>>>>,
+    pub publish_drafts_results: Arc<Mutex<Vec<Result<(), DomainError>>>>,
+    pub last_publish_drafts_payload: Arc<RwLock<Option<PublishDraftsRequest>>>,
+    pub last_post_draft_payload: Arc<RwLock<Option<CommentInput>>>,
+    pub last_post_review_payload: Arc<RwLock<Option<CommentBatchInput>>>,
+    pub cherry_pick_results: Arc<Mutex<Vec<Result<CherryPickResult, DomainError>>>>,
+    pub last_cherry_pick_payload: Arc<RwLock<Option<CherryPickRequest>>>,
+    pub get_related_results: Arc<Mutex<Vec<Result<Vec<RelatedChange>, DomainError>>>>,
+    pub submit_change_results: Arc<Mutex<Vec<Result<SubmitResult, DomainError>>>>,
+}
+
+impl Default for MockGerritRepository {
+    fn default() -> Self {
+        Self {
+            query_changes_results: Arc::new(Mutex::new(Vec::new())),
+            query_changes_call_count: Arc::new(AtomicUsize::new(0)),
+            last_query: Arc::new(RwLock::new(None)),
+            get_change_detail_results: Arc::new(Mutex::new(Vec::new())),
+            get_commit_message_results: Arc::new(Mutex::new(Vec::new())),
+            list_files_results: Arc::new(Mutex::new(Vec::new())),
+            get_diff_results: Arc::new(Mutex::new(Vec::new())),
+            list_comments_results: Arc::new(Mutex::new(Vec::new())),
+            list_drafts_results: Arc::new(Mutex::new(Vec::new())),
+            get_commit_results: Arc::new(Mutex::new(Vec::new())),
+            get_revision_commit_results: Arc::new(Mutex::new(Vec::new())),
+            suggest_reviewers_results: Arc::new(Mutex::new(Vec::new())),
+            changes_submitted_together_results: Arc::new(Mutex::new(Vec::new())),
+            create_change_results: Arc::new(Mutex::new(Vec::new())),
+            add_reviewer_results: Arc::new(Mutex::new(Vec::new())),
+            last_add_reviewer_payload: Arc::new(RwLock::new(None)),
+            set_ready_results: Arc::new(Mutex::new(Vec::new())),
+            set_wip_results: Arc::new(Mutex::new(Vec::new())),
+            set_topic_results: Arc::new(Mutex::new(Vec::new())),
+            abandon_change_results: Arc::new(Mutex::new(Vec::new())),
+            revert_change_results: Arc::new(Mutex::new(Vec::new())),
+            revert_submission_results: Arc::new(Mutex::new(Vec::new())),
+            post_review_results: Arc::new(Mutex::new(Vec::new())),
+            set_labels_results: Arc::new(Mutex::new(Vec::new())),
+            post_draft_results: Arc::new(Mutex::new(Vec::new())),
+            delete_draft_results: Arc::new(Mutex::new(Vec::new())),
+            publish_drafts_results: Arc::new(Mutex::new(Vec::new())),
+            last_publish_drafts_payload: Arc::new(RwLock::new(None)),
+            last_post_draft_payload: Arc::new(RwLock::new(None)),
+            last_post_review_payload: Arc::new(RwLock::new(None)),
+            cherry_pick_results: Arc::new(Mutex::new(Vec::new())),
+            last_cherry_pick_payload: Arc::new(RwLock::new(None)),
+            get_related_results: Arc::new(Mutex::new(Vec::new())),
+            submit_change_results: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
 }
 
 impl MockGerritRepository {
@@ -103,6 +155,13 @@ impl MockGerritRepository {
 
     pub fn push_get_commit_result(&self, result: Result<CommitInfo, DomainError>) {
         self.get_commit_results.lock().unwrap().push(result);
+    }
+
+    pub fn push_get_revision_commit_result(&self, result: Result<RevisionCommitInfo, DomainError>) {
+        self.get_revision_commit_results
+            .lock()
+            .unwrap()
+            .push(result);
     }
 
     pub fn push_suggest_reviewers_result(
@@ -267,6 +326,14 @@ impl GerritRepository for MockGerritRepository {
         pop_result!(self.get_commit_results)
     }
 
+    async fn get_revision_commit(
+        &self,
+        _change_id: &str,
+        _revision: &str,
+    ) -> Result<RevisionCommitInfo, DomainError> {
+        pop_result!(self.get_revision_commit_results)
+    }
+
     async fn suggest_reviewers(
         &self,
         _change_id: &str,
@@ -293,8 +360,9 @@ impl GerritRepository for MockGerritRepository {
     async fn add_reviewer(
         &self,
         _change_id: &str,
-        _payload: &AddReviewerRequest,
+        payload: &AddReviewerRequest,
     ) -> Result<AddReviewerResult, DomainError> {
+        *self.last_add_reviewer_payload.write().unwrap() = Some(payload.clone());
         pop_result!(self.add_reviewer_results)
     }
 
@@ -338,14 +406,6 @@ impl GerritRepository for MockGerritRepository {
         pop_result!(self.revert_submission_results)
     }
 
-    async fn post_review(
-        &self,
-        _change_id: &str,
-        _payload: &CommentBatchInput,
-    ) -> Result<(), DomainError> {
-        pop_result!(self.post_review_results)
-    }
-
     async fn set_labels(
         &self,
         _change_id: &str,
@@ -354,11 +414,21 @@ impl GerritRepository for MockGerritRepository {
         pop_result!(self.set_labels_results)
     }
 
+    async fn post_review(
+        &self,
+        _change_id: &str,
+        payload: &CommentBatchInput,
+    ) -> Result<(), DomainError> {
+        *self.last_post_review_payload.write().unwrap() = Some(payload.clone());
+        pop_result!(self.post_review_results)
+    }
+
     async fn post_draft(
         &self,
         _change_id: &str,
-        _payload: &DraftInput,
+        payload: &CommentInput,
     ) -> Result<String, DomainError> {
+        *self.last_post_draft_payload.write().unwrap() = Some(payload.clone());
         pop_result!(self.post_draft_results)
     }
 
@@ -369,8 +439,9 @@ impl GerritRepository for MockGerritRepository {
     async fn publish_drafts(
         &self,
         _change_id: &str,
-        _payload: &PublishDraftsRequest,
+        payload: &PublishDraftsRequest,
     ) -> Result<(), DomainError> {
+        *self.last_publish_drafts_payload.write().unwrap() = Some(payload.clone());
         pop_result!(self.publish_drafts_results)
     }
 
@@ -378,8 +449,9 @@ impl GerritRepository for MockGerritRepository {
         &self,
         _change_id: &str,
         _revision: &str,
-        _payload: &CherryPickRequest,
+        payload: &CherryPickRequest,
     ) -> Result<CherryPickResult, DomainError> {
+        *self.last_cherry_pick_payload.write().unwrap() = Some(payload.clone());
         pop_result!(self.cherry_pick_results)
     }
 
@@ -503,6 +575,9 @@ mod tests {
                     parent: None,
                     base: None,
                     notify: None,
+                    keep_reviewers: None,
+                    allow_conflicts: None,
+                    allow_empty: None,
                 },
             )
             .await
