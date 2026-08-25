@@ -296,7 +296,11 @@ pub async fn get_related_changes<R: GerritRepository + Send + Sync + 'static>(
             }
             let mut lines = vec![format!("Related changes for {}:", params.change_id)];
             for rc in &related {
-                let subject = rc.subject.clone().unwrap_or_else(|| "no subject".into());
+                let subject = rc
+                    .subject
+                    .clone()
+                    .or_else(|| rc.commit.as_ref().and_then(|c| c.subject.clone()))
+                    .unwrap_or_else(|| "no subject".into());
                 let status = rc.status.clone().unwrap_or_default();
                 lines.push(format!(
                     "- {} ({}): {} [{}]",

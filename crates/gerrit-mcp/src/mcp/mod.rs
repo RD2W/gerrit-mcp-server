@@ -879,6 +879,34 @@ mod tests {
     }
 
     #[tokio::test]
+    pub async fn test_get_related_changes_nested_subject() {
+        let mock = MockGerritRepository::default();
+        mock.push_get_related_result(Ok(vec![RelatedChange {
+            _change_number: 42,
+            _revision_number: 1,
+            subject: None,
+            commit: Some(RelatedCommit {
+                commit: "abc123".into(),
+                subject: Some("Nested subject".into()),
+            }),
+            status: Some("NEW".into()),
+            insertions: None,
+            deletions: None,
+        }]));
+        let server = GerritServer::new(mock);
+
+        let params = GetRelatedChangesParams {
+            change_id: "123".into(),
+            revision_id: None,
+            gerrit_base_url: None,
+        };
+        let result = server.get_related_changes(Parameters(params)).await;
+        let text = extract_text(result);
+
+        assert!(text.contains("42 (1): Nested subject [NEW]"), "got: {text}");
+    }
+
+    #[tokio::test]
     pub async fn test_get_git_parent_changes_tool() {
         let mock = MockGerritRepository::default();
         mock.push_query_changes_result(Ok(vec![Change {
