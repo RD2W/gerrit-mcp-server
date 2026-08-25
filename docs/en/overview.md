@@ -107,7 +107,7 @@ config for local development and remote deployment.
 
 ## Current status
 
-**v1.3.0.** The core HTTP client, all 32 MCP tools, dual transport, caching, rate
+**v1.4.0.** The core HTTP client, all 32 MCP tools, dual transport, caching, rate
 limiting, TLS, health endpoints, and Docker packaging are implemented and covered
 by **338 tests**. Supports MCP 2026-07-28 protocol (stateless Streamable HTTP,
 protocol negotiation) with legacy 2025-11-25 fallback.

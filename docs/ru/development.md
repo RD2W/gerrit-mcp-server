@@ -155,13 +155,13 @@ cargo build --workspace --release
 
 Релизы автоматизированы через `.github/workflows/release.yml`:
 
-1. Отправьте тег, например `v1.3.0`
+1. Отправьте тег, например `v1.4.0`
 2. CI собирает мультиархитектурные Docker-образы и создаёт GitHub Release
 3. Бинарные артефакты прикрепляются к релизу
 
 Ручные шаги (для отладки workflow):
 
 ```bash
-docker build -t gerrit-mcp:v1.3.0 .
-docker tag gerrit-mcp:v1.3.0 gerrit-mcp:latest
+docker build -t gerrit-mcp:v1.4.0 .
+docker tag gerrit-mcp:v1.4.0 gerrit-mcp:latest
 ```

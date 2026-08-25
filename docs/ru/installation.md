@@ -97,7 +97,7 @@ docker compose up -d
 docker pull rd2w/gerrit-mcp:latest
 
 # Или конкретной версии
-docker pull rd2w/gerrit-mcp:v1.3.0
+docker pull rd2w/gerrit-mcp:v1.4.0
 
 # Используйте docker-compose файл для готовых образов
 docker compose -f docker-compose.hub.yml up -d
