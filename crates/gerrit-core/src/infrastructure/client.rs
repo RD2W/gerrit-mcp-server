@@ -295,7 +295,19 @@ impl GerritRepository for GerritClient {
     async fn get_commit_message(&self, change_id: &str) -> Result<CommitMessage, DomainError> {
         let cid = Self::percent_encode(change_id);
         let url = self.url(&format!("/changes/{cid}/message"));
-        self.get_json(&url).await
+        match self.get_json::<CommitMessage>(&url).await {
+            Ok(msg) => Ok(msg),
+            // GET /changes/{id}/message exists only from Gerrit 3.10. On older
+            // instances fall back to the revision commit endpoint, whose
+            // CommitInfo.message already contains the full commit message.
+            Err(DomainError::HttpStatus { status: 404, .. }) => {
+                let commit = self.get_revision_commit(change_id, "current").await?;
+                Ok(CommitMessage {
+                    full_message: commit.message,
+                })
+            }
+            Err(e) => Err(e),
+        }
     }
 
     async fn list_files(&self, change_id: &str) -> Result<BTreeMap<String, FileInfo>, DomainError> {
@@ -1153,6 +1165,76 @@ mod tests {
         assert_eq!(
             result.full_message,
             "Fix stuff\n\nDetails here\n\nChange-Id: Iabc123"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_commit_message_falls_back_on_404() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/changes/123/message"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path("/changes/123/revisions/current/commit"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "subject": "Fix stuff",
+                "message": "Fix stuff\n\nDetails here\n\nChange-Id: Iabc",
+                "commit": "abcd1234efgh",
+                "author": {"name": "Dev", "email": "dev@example.com", "date": "2026-01-01 00:00:00", "tz": 60},
+                "committer": {"name": "CI", "email": "ci@example.com", "date": "2026-01-01 00:00:00", "tz": 60},
+                "parents": []
+            })))
+            .mount(&server)
+            .await;
+
+        let client = test_client(&server.uri());
+        let result = client.get_commit_message("123").await.unwrap();
+        assert_eq!(
+            result.full_message,
+            "Fix stuff\n\nDetails here\n\nChange-Id: Iabc"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_commit_message_no_fallback_on_non_404() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/changes/123/message"))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path("/changes/123/revisions/current/commit"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "subject": "should not be used",
+                "message": "should not be used",
+                "commit": "1234",
+                "author": {"name": "A", "email": "a@example.com", "date": "2026-01-01 00:00:00", "tz": 60},
+                "committer": {"name": "B", "email": "b@example.com", "date": "2026-01-01 00:00:00", "tz": 60},
+                "parents": []
+            })))
+            .mount(&server)
+            .await;
+
+        let client = test_client(&server.uri());
+        let err = client.get_commit_message("123").await.unwrap_err();
+        assert!(matches!(err, DomainError::HttpStatus { status: 500, .. }));
+
+        let requests = server
+            .received_requests()
+            .await
+            .expect("no requests received");
+        assert!(
+            requests
+                .iter()
+                .all(|r| !r.url.path().ends_with("revisions/current/commit")),
+            "fallback endpoint must not be hit on non-404"
         );
     }
 
