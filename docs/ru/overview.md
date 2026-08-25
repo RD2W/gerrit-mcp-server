@@ -29,13 +29,13 @@ LLM-агентам (Claude Desktop, Codex и др.) нужно взаимоде�
 
 ### 32 инструментов MCP — полное покрытие Gerrit REST API
 
-| Категория | Инструменты |
-|---|---|
-| Запрос изменений (5) | `query_changes`, `query_changes_by_date_and_filters`, `get_change_details`, `get_most_recent_cl`, `changes_submitted_together` |
-| Содержимое (6) | `get_commit_message`, `list_change_files`, `get_file_diff`, `list_change_comments`, `list_draft_comments`, `get_bugs_from_cl` |
-| Жизненный цикл (8) | `create_change`, `set_ready_for_review`, `set_work_in_progress`, `set_topic`, `abandon_change`, `revert_change`, `revert_submission`, `submit_change` |
-| Code review (7) | `add_reviewer`, `suggest_reviewers`, `post_review_comment`, `post_draft_comment`, `delete_draft_comment`, `delete_draft_comments`, `publish_drafts` |
-| Cherry-pick (2) | `cherry_pick_change`, `cherry_pick_chain` |
+| Категория            | Инструменты                                                                                                                                                                                           |
+|----------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Запрос изменений (5) | `query_changes`, `query_changes_by_date_and_filters`, `get_change_details`, `get_most_recent_cl`, `changes_submitted_together`                                                                        |
+| Содержимое (9)       | `get_commit_message`, `get_revision_commit`, `get_related_changes`, `get_git_parent_changes`, `list_change_files`, `get_file_diff`, `list_change_comments`, `list_draft_comments`, `get_bugs_from_cl` |
+| Жизненный цикл (8)   | `create_change`, `set_ready_for_review`, `set_work_in_progress`, `set_topic`, `abandon_change`, `revert_change`, `revert_submission`, `submit_change`                                                 |
+| Code review (8)      | `add_reviewer`, `suggest_reviewers`, `set_labels`, `post_review_comment`, `post_draft_comment`, `delete_draft_comment`, `delete_draft_comments`, `publish_drafts`                                     |
+| Cherry-pick (2)      | `cherry_pick_change`, `cherry_pick_chain`                                                                                                                                                             |
 
 Каждый инструмент описывает свои параметры через JSON Schema (schemars),
 поэтому LLM-клиенты автоматически знают ожидаемые входные и выходные данные —
@@ -43,21 +43,21 @@ LLM-агентам (Claude Desktop, Codex и др.) нужно взаимоде�
 
 ### Двойной транспорт
 
-| Режим | Применение |
-|---|---|
-| **stdio** | Прямой запуск процесса: `docker exec`, локальный подпроцесс Claude Desktop, отладка |
+| Режим               | Применение                                                                          |
+|---------------------|-------------------------------------------------------------------------------------|
+| **stdio**           | Прямой запуск процесса: `docker exec`, локальный подпроцесс Claude Desktop, отладка |
 | **Streamable HTTP** | Сетевое развёртывание: удалённый сервер, несколько клиентов, health checks, метрики |
 
 Режим `both` запускает stdio и HTTP одновременно.
 
 ### Гибкая аутентификация
 
-| Режим | Описание |
-|---|---|
+| Режим                  | Описание                                                 |
+|------------------------|----------------------------------------------------------|
 | `http_basic` / `basic` | HTTP Basic Auth (логин + пароль из переменных окружения) |
-| `bearer` / `token` | Bearer-токен из переменной окружения |
-| `git_cookies` | Файл gitcookies Gerrit (формат Netscape cookies) |
-| `none` | Без аутентификации — для открытых инстансов |
+| `bearer` / `token`     | Bearer-токен из переменной окружения                     |
+| `git_cookies`          | Файл gitcookies Gerrit (формат Netscape cookies)         |
+| `none`                 | Без аутентификации — для открытых инстансов              |
 
 Учётные данные **никогда** не хранятся в файле конфигурации — только имена
 переменных окружения.
@@ -85,18 +85,18 @@ LLM-агентам (Claude Desktop, Codex и др.) нужно взаимоде�
 
 ### Оптимизации для кодовых баз масштаба AOSP
 
-| Возможность | Назначение |
-|---|---|
-| **Кэш в памяти** | TTL + LRU кэш с настраиваемым размером, исключает повторные вызовы API |
-| **Rate limiting** | Алгоритм token bucket защищает Gerrit от перегрузки |
+| Возможность             | Назначение                                                                  |
+|-------------------------|-----------------------------------------------------------------------------|
+| **Кэш в памяти**        | TTL + LRU кэш с настраиваемым размером, исключает повторные вызовы API      |
+| **Rate limiting**       | Алгоритм token bucket защищает Gerrit от перегрузки                         |
 | **Подсказки пагинации** | Поле `has_more` в ответах сообщает LLM о наличии дополнительных результатов |
 
 ### Health и метрики
 
-| Эндпоинт | Назначение |
-|---|---|
-| `/healthz` | Живучесть — всегда возвращает 200, если процесс запущен |
-| `/readyz` | Готовность — 200, когда конфигурация загружена и процесс готов |
+| Эндпоинт   | Назначение                                                                   |
+|------------|------------------------------------------------------------------------------|
+| `/healthz` | Живучесть — всегда возвращает 200, если процесс запущен                      |
+| `/readyz`  | Готовность — 200, когда конфигурация загружена и процесс готов               |
 | `/metrics` | Метрики в формате Prometheus (счётчики вызовов инструментов, ошибок, uptime) |
 
 ### Docker
@@ -110,5 +110,5 @@ LLM-агентам (Claude Desktop, Codex и др.) нужно взаимоде�
 
 **v1.4.0.** HTTP-клиент, все 32 инструментов MCP, двойной транспорт,
 кэширование, ограничение частоты, TLS, health-эндпоинты и упаковка в Docker
-реализованы и покрыты **338 тестами**. Поддержка MCP 2026-07-28 (stateless
+реализованы и покрыты **407 тестами**. Поддержка MCP 2026-07-28 (stateless
 Streamable HTTP, согласование протокола) с fallback на 2025-11-25.

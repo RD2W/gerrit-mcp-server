@@ -25,7 +25,7 @@ git checkout -b feat/моя-фича
 ## Запуск тестов
 
 ```bash
-# Все тесты (338). Используйте --test-threads=1 во избежание гонок env-переменных
+# Все тесты (407). Используйте --test-threads=1 во избежание гонок env-переменных
 cargo test --workspace -- --test-threads=1
 
 # Отдельный крейт
@@ -45,12 +45,12 @@ cargo test -- --ignored
 
 CI запускается при каждом пуше в ветки `dev`, `main`, `ci` и для всех PR:
 
-| Задача | Команда | Назначение |
-|---|---|---|
-| Форматирование | `cargo fmt --all -- --check` | Единый стиль кода |
-| Clippy | `cargo clippy --workspace --all-targets -- -D warnings` | Поиск ошибок и стилистических проблем |
-| Тесты | `cargo test --workspace --locked` | Запуск всех модульных и интеграционных тестов |
-| Сборка | `cargo build --workspace --locked --release` | Проверка компиляции release-сборки |
+| Задача         | Команда                                                 | Назначение                                    |
+|----------------|---------------------------------------------------------|-----------------------------------------------|
+| Форматирование | `cargo fmt --all -- --check`                            | Единый стиль кода                             |
+| Clippy         | `cargo clippy --workspace --all-targets -- -D warnings` | Поиск ошибок и стилистических проблем         |
+| Тесты          | `cargo test --workspace --locked`                       | Запуск всех модульных и интеграционных тестов |
+| Сборка         | `cargo build --workspace --locked --release`            | Проверка компиляции release-сборки            |
 
 Workflow GitHub Actions: `.github/workflows/ci.yml`
 

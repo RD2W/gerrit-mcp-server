@@ -29,13 +29,13 @@ handling, rate limiting, and result formatting.
 
 ### 32 MCP tools — full Gerrit REST API coverage
 
-| Category | Tools |
-|---|---|
-| Querying changes (5) | `query_changes`, `query_changes_by_date_and_filters`, `get_change_details`, `get_most_recent_cl`, `changes_submitted_together` |
-| Change content (6) | `get_commit_message`, `list_change_files`, `get_file_diff`, `list_change_comments`, `list_draft_comments`, `get_bugs_from_cl` |
-| Change lifecycle (8) | `create_change`, `set_ready_for_review`, `set_work_in_progress`, `set_topic`, `abandon_change`, `revert_change`, `revert_submission`, `submit_change` |
-| Code review (7) | `add_reviewer`, `suggest_reviewers`, `post_review_comment`, `post_draft_comment`, `delete_draft_comment`, `delete_draft_comments`, `publish_drafts` |
-| Cherry-pick (2) | `cherry_pick_change`, `cherry_pick_chain` |
+| Category             | Tools                                                                                                                                                                                                 |
+|----------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Querying changes (5) | `query_changes`, `query_changes_by_date_and_filters`, `get_change_details`, `get_most_recent_cl`, `changes_submitted_together`                                                                        |
+| Change content (9)   | `get_commit_message`, `get_revision_commit`, `get_related_changes`, `get_git_parent_changes`, `list_change_files`, `get_file_diff`, `list_change_comments`, `list_draft_comments`, `get_bugs_from_cl` |
+| Change lifecycle (8) | `create_change`, `set_ready_for_review`, `set_work_in_progress`, `set_topic`, `abandon_change`, `revert_change`, `revert_submission`, `submit_change`                                                 |
+| Code review (8)      | `add_reviewer`, `suggest_reviewers`, `set_labels`, `post_review_comment`, `post_draft_comment`, `delete_draft_comment`, `delete_draft_comments`, `publish_drafts`                                     |
+| Cherry-pick (2)      | `cherry_pick_change`, `cherry_pick_chain`                                                                                                                                                             |
 
 Each tool declares its parameters via JSON Schema (schemars), so LLM clients
 automatically know the expected inputs and outputs — no manual prompt engineering
@@ -43,21 +43,21 @@ needed.
 
 ### Dual transport
 
-| Mode | Use case |
-|---|---|
-| **stdio** | Direct process launch: `docker exec`, Claude Desktop local subprocess, debugging |
-| **Streamable HTTP** | Network deployment: remote server, multiple clients, health checks, metrics |
+| Mode                | Use case                                                                         |
+|---------------------|----------------------------------------------------------------------------------|
+| **stdio**           | Direct process launch: `docker exec`, Claude Desktop local subprocess, debugging |
+| **Streamable HTTP** | Network deployment: remote server, multiple clients, health checks, metrics      |
 
 The `both` mode runs stdio and HTTP simultaneously.
 
 ### Flexible authentication
 
-| Mode | Description |
-|---|---|
+| Mode                   | Description                                         |
+|------------------------|-----------------------------------------------------|
 | `http_basic` / `basic` | HTTP Basic Auth (username + password from env vars) |
-| `bearer` / `token` | Bearer token from an environment variable |
-| `git_cookies` | Gerrit gitcookies file (Netscape cookie format) |
-| `none` | No authentication — for open instances |
+| `bearer` / `token`     | Bearer token from an environment variable           |
+| `git_cookies`          | Gerrit gitcookies file (Netscape cookie format)     |
+| `none`                 | No authentication — for open instances              |
 
 Credentials are **never** stored in the config file — only environment variable names.
 
@@ -84,18 +84,18 @@ constant-time equality to prevent timing attacks.
 
 ### Optimised for AOSP-scale codebases
 
-| Feature | Purpose |
-|---|---|
-| **In-memory cache** | TTL + LRU cache with configurable size, avoids repeated API calls |
-| **Rate limiting** | Token-bucket limiter protects the Gerrit backend from overload |
+| Feature              | Purpose                                                                     |
+|----------------------|-----------------------------------------------------------------------------|
+| **In-memory cache**  | TTL + LRU cache with configurable size, avoids repeated API calls           |
+| **Rate limiting**    | Token-bucket limiter protects the Gerrit backend from overload              |
 | **Pagination hints** | `has_more` field in responses tells the LLM when more results are available |
 
 ### Health & metrics
 
-| Endpoint | Purpose |
-|---|---|
-| `/healthz` | Liveness — always returns 200 if the server is running |
-| `/readyz` | Readiness — 200 when config is loaded and process is ready |
+| Endpoint   | Purpose                                                        |
+|------------|----------------------------------------------------------------|
+| `/healthz` | Liveness — always returns 200 if the server is running         |
+| `/readyz`  | Readiness — 200 when config is loaded and process is ready     |
 | `/metrics` | Prometheus-format metrics (tool call counters, errors, uptime) |
 
 ### Docker
@@ -109,5 +109,5 @@ config for local development and remote deployment.
 
 **v1.4.0.** The core HTTP client, all 32 MCP tools, dual transport, caching, rate
 limiting, TLS, health endpoints, and Docker packaging are implemented and covered
-by **338 tests**. Supports MCP 2026-07-28 protocol (stateless Streamable HTTP,
+by **407 tests**. Supports MCP 2026-07-28 protocol (stateless Streamable HTTP,
 protocol negotiation) with legacy 2025-11-25 fallback.
