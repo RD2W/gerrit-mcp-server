@@ -1239,6 +1239,40 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_get_related_parses_nested_commit_subject() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/changes/123/revisions/current/related"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "changes": [{
+                    "_change_number": 42,
+                    "_revision_number": 1,
+                    "status": "NEW",
+                    "commit": {
+                        "commit": "abc123def456",
+                        "subject": "Parent change"
+                    }
+                }]
+            })))
+            .mount(&server)
+            .await;
+
+        let client = test_client(&server.uri());
+        let related = client.get_related("123", "current").await.unwrap();
+        assert_eq!(related.len(), 1);
+        let entry = &related[0];
+        assert!(entry.subject.is_none(), "flat subject must stay absent");
+        let commit = entry.commit.as_ref().expect("nested commit must parse");
+        assert_eq!(commit.commit, "abc123def456");
+        assert_eq!(
+            commit.subject.as_deref(),
+            Some("Parent change"),
+            "nested commit.subject must be exposed"
+        );
+    }
+
+    #[tokio::test]
     async fn test_get_revision_commit_uses_revision_path() {
         let server = MockServer::start().await;
 

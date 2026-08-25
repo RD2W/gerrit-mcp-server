@@ -257,11 +257,21 @@ pub struct RelatedChange {
     #[serde(default)]
     pub subject: Option<String>,
     #[serde(default)]
+    pub commit: Option<RelatedCommit>,
+    #[serde(default)]
     pub status: Option<String>,
     #[serde(default)]
     pub insertions: Option<i64>,
     #[serde(default)]
     pub deletions: Option<i64>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelatedCommit {
+    pub commit: String,
+    #[serde(default)]
+    pub subject: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
