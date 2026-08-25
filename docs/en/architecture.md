@@ -104,8 +104,8 @@ other contexts.
 
 | Module | Purpose |
 |---|---|
-| `mcp/mod.rs` | `GerritServer<R>` — MCP server holding an `Arc<R>` repository. 29 `#[tool]`-annotated methods. Dynamic client resolution for multi-instance Gerrit (via `gerrit_base_url` param). Helpers: `extract_bugs()`, `sort_by_date()`, `merge_options()` |
-| `mcp/tools.rs` | Parameter types with JSON Schema (schemars) for all 29 tools |
+| `mcp/mod.rs` | `GerritServer<R>` — MCP server holding an `Arc<R>` repository. 32 `#[tool]`-annotated methods. Dynamic client resolution for multi-instance Gerrit (via `gerrit_base_url` param). Helpers: `extract_bugs()`, `sort_by_date()`, `merge_options()` |
+| `mcp/tools.rs` | Parameter types with JSON Schema (schemars) for all 32 tools |
 | `mcp/changes.rs` | Tool implementations for change lifecycle: query, create, set ready/WIP/topic, abandon, revert, submit |
 | `mcp/reviews.rs` | Tool implementations for reviews and cherry-picks: list files, get diff, suggest/add reviewer, cherry-pick single/chain |
 | `mcp/comments.rs` | Tool implementations for comments: list, post, delete drafts, publish |

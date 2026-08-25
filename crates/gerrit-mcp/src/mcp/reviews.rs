@@ -124,7 +124,7 @@ pub async fn add_reviewer<R: GerritRepository + Send + Sync + 'static>(
     };
     let payload = AddReviewerRequest {
         reviewer: params.reviewer,
-        confirmed: Some(true),
+        confirmed: params.confirmed,
         state: Some(state.to_string()),
         notify: None,
     };
@@ -205,7 +205,19 @@ pub async fn cherry_pick_chain<R: GerritRepository + Send + Sync + 'static>(
     let mut results: Vec<String> = Vec::new();
     let mut base: Option<String> = None;
 
-    for rc in &reversed {
+    let partial = |results: Vec<String>, reason: String| {
+        let mut out = results.join("\n");
+        if !out.is_empty() {
+            out.push('\n');
+        }
+        out.push_str(&reason);
+        out.push_str("\nSome changes were cherry-picked successfully.");
+        server.text(out)
+    };
+
+    let total = reversed.len();
+
+    for (idx, rc) in reversed.iter().enumerate() {
         let cp_payload = CherryPickRequest {
             message: None,
             destination: params.destination.clone(),
@@ -219,6 +231,7 @@ pub async fn cherry_pick_chain<R: GerritRepository + Send + Sync + 'static>(
 
         let change_id_str = rc._change_number.to_string();
         let revision_str = rc._revision_number.to_string();
+        let need_base = idx + 1 < total;
 
         match repo
             .cherry_pick(&change_id_str, &revision_str, &cp_payload)
@@ -232,33 +245,49 @@ pub async fn cherry_pick_chain<R: GerritRepository + Send + Sync + 'static>(
                     change_id_str, revision_str, new_number
                 ));
 
+                if !need_base {
+                    // No later cherry-pick has to stack on this result, so the
+                    // base SHA of the newly created change is not required.
+                    continue;
+                }
+
                 let base_opts = vec![
                     GERRIT_OPTION_CURRENT_REVISION.to_string(),
                     GERRIT_OPTION_CURRENT_COMMIT.to_string(),
                 ];
                 match repo.get_change_detail(&new_id, &base_opts).await {
-                    Ok(detail) => {
-                        if let Some(ref rev_key) = detail.current_revision {
-                            base = Some(rev_key.clone());
+                    Ok(detail) => match detail.current_revision {
+                        Some(rev_key) => base = Some(rev_key),
+                        None => {
+                            return partial(
+                                results,
+                                format!(
+                                    "Partial failure at change {} (rev {}): cannot determine the new revision SHA to chain onto it",
+                                    change_id_str, revision_str
+                                ),
+                            );
                         }
-                        if base.is_none() {
-                            base = Some(new_id);
-                        }
-                    }
-                    Err(_) => {
-                        base = Some(new_id);
+                    },
+                    Err(e) => {
+                        return partial(
+                            results,
+                            format!(
+                                "Partial failure at change {} (rev {}): cannot read the new change to determine its revision SHA ({e})",
+                                change_id_str, revision_str
+                            ),
+                        );
                     }
                 }
             }
             Err(e) => {
                 if !results.is_empty() {
-                    results.push(format!(
-                        "Partial failure at change {} (rev {}): {}",
-                        change_id_str, revision_str, e
-                    ));
-                    let mut out = results.join("\n");
-                    out.push_str("\nSome changes were cherry-picked successfully.");
-                    return server.text(out);
+                    return partial(
+                        results,
+                        format!(
+                            "Partial failure at change {} (rev {}): {}",
+                            change_id_str, revision_str, e
+                        ),
+                    );
                 }
                 return server.error(format!(
                     "Failed to cherry-pick change {} (rev {}): {}",

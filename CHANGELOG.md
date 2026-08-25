@@ -6,7 +6,21 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **3 new core Gerrit API tools** — `get_revision_commit` (full commit object
+  for a revision), `get_related_changes` (relation-chain panel with
+  subject/status), `get_git_parent_changes` (changes that are parents of a
+  change via the `parentof:` query). All pure core API; plugin tools remain
+  out of scope.
+
 ### Fixed
+
+- **`add_reviewer` no longer bypasses server confirmation policy** — the tool
+  no longer sends `confirmed: true` unconditionally. `confirmed` is now an
+  optional parameter (default: not sent, like the reference client), so
+  `addreviewer.maxWithoutConfirmation` applies normally unless the caller
+  explicitly requests confirmed status.
 
 - **Gerrit API parity fixes** — draft comments now send `unresolved`/`range`/
   embedded `` ```suggestion `` blocks and review comments forward `labels`;
@@ -17,6 +31,15 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   validates both dates and quotes the `message:` filter; bug extraction
   matches the reference implementation (footer `b/` ids, space-separated
   lists, case-insensitive inline `b/NNN`).
+
+  The legacy `suggestion:`-prefixed `message` special case is removed — use
+  the dedicated `suggestion` argument instead, which embeds a
+  `` ```suggestion `` block.
+
+- **`get_commit_message` returns the verbatim commit message** — the tool now
+  reads `GET /changes/{id}/message` and returns `full_message` as-is, instead of
+  a reformatted `CommitInfo` summary with synthetic headers and 8-character
+  truncated parent SHAs.
 
 - **`changes_submitted_together` accepts both Gerrit response shapes** — Gerrit's
   `GET /changes/{id}/submitted_together` returns either a bare JSON array of

@@ -161,15 +161,8 @@ pub struct Message {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct CommitMessage {
-    pub subject: String,
-    pub message: String,
-    pub commit: String,
-    pub author: GitPersonInfo,
-    pub committer: GitPersonInfo,
-    #[serde(default)]
-    pub parents: Vec<CommitParent>,
+    pub full_message: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -261,6 +254,14 @@ pub struct RelatedChange {
     pub _change_number: u64,
     #[serde(rename = "_revision_number")]
     pub _revision_number: u64,
+    #[serde(default)]
+    pub subject: Option<String>,
+    #[serde(default)]
+    pub status: Option<String>,
+    #[serde(default)]
+    pub insertions: Option<i64>,
+    #[serde(default)]
+    pub deletions: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -367,6 +368,22 @@ pub struct AddReviewerResult {
 #[serde(rename_all = "camelCase")]
 pub struct CommitInfo {
     pub message: String,
+}
+
+// ---------------------------------------------------------------------------
+// RevisionCommitInfo (full commit info for a specific revision)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RevisionCommitInfo {
+    pub subject: String,
+    pub message: String,
+    pub commit: String,
+    pub author: GitPersonInfo,
+    pub committer: GitPersonInfo,
+    #[serde(default)]
+    pub parents: Vec<CommitParent>,
 }
 
 // ---------------------------------------------------------------------------
@@ -618,6 +635,12 @@ pub trait GerritRepository: Send + Sync {
     ) -> Result<BTreeMap<String, Vec<DraftComment>>, DomainError>;
 
     async fn get_commit(&self, change_id: &str) -> Result<CommitInfo, DomainError>;
+
+    async fn get_revision_commit(
+        &self,
+        change_id: &str,
+        revision: &str,
+    ) -> Result<RevisionCommitInfo, DomainError>;
 
     async fn suggest_reviewers(
         &self,

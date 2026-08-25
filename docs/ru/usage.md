@@ -221,7 +221,7 @@ healthcheck:
 
 ## Справочник инструментов MCP
 
-Сервер предоставляет **29 инструментов**, покрывающих всё Gerrit REST API.
+Сервер предоставляет **32 инструментов**, покрывающих всё Gerrit REST API.
 
 ### Запрос изменений
 
@@ -237,7 +237,10 @@ healthcheck:
 
 | Инструмент | Описание | Основные параметры |
 |---|---|---|
-| `get_commit_message` | Сообщение коммита для изменения | `change_id` |
+| `get_commit_message` | Дословное сообщение коммита для изменения (`GET /changes/{id}/message`) | `change_id` |
+| `get_revision_commit` | Полный объект коммита ревизии | `change_id`, `revision_id?` |
+| `get_related_changes` | Изменения, связанные с ревизией (цепочка зависимостей) | `change_id`, `revision_id?` |
+| `get_git_parent_changes` | Родительские изменения (`parentof:`-запрос) | `change_id`, `limit?` |
 | `list_change_files` | Список изменённых файлов | `change_id` |
 | `get_file_diff` | Diff для файла в изменении | `change_id`, `file_path` |
 | `list_change_comments` | Опубликованные комментарии | `change_id` |
@@ -261,7 +264,7 @@ healthcheck:
 
 | Инструмент | Описание | Основные параметры |
 |---|---|---|
-| `add_reviewer` | Добавить ревьюера | `change_id`, `reviewer`, `state?` |
+| `add_reviewer` | Добавить ревьюера | `change_id`, `reviewer`, `state?`, `confirmed?` |
 | `suggest_reviewers` | Предложения ревьюеров | `change_id`, `query`, `limit?`, `exclude_groups?` |
 | `set_labels` | Установить голоса меток на изменение | `change_id`, `labels`, `message?`, `gerrit_base_url?` |
 | `post_review_comment` | Опубликовать комментарий ревью | `change_id`, `file_path`, `line_number`, `message`, `unresolved?`, `labels?` |

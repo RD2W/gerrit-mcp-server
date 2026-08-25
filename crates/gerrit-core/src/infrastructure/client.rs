@@ -294,7 +294,7 @@ impl GerritRepository for GerritClient {
 
     async fn get_commit_message(&self, change_id: &str) -> Result<CommitMessage, DomainError> {
         let cid = Self::percent_encode(change_id);
-        let url = self.url(&format!("/changes/{cid}/revisions/current/commit"));
+        let url = self.url(&format!("/changes/{cid}/message"));
         self.get_json(&url).await
     }
 
@@ -350,6 +350,17 @@ impl GerritRepository for GerritClient {
     async fn get_commit(&self, change_id: &str) -> Result<CommitInfo, DomainError> {
         let cid = Self::percent_encode(change_id);
         let url = self.url(&format!("/changes/{cid}/revisions/current/commit"));
+        self.get_json(&url).await
+    }
+
+    async fn get_revision_commit(
+        &self,
+        change_id: &str,
+        revision: &str,
+    ) -> Result<RevisionCommitInfo, DomainError> {
+        let cid = Self::percent_encode(change_id);
+        let rev = Self::percent_encode(revision);
+        let url = self.url(&format!("/changes/{cid}/revisions/{rev}/commit"));
         self.get_json(&url).await
     }
 
@@ -1066,6 +1077,47 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_add_reviewer_does_not_send_confirmed_by_default() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/changes/123/reviewers"))
+            .and(body_partial_json(serde_json::json!({
+                "reviewer": "dev@example.com"
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "reviewers": [{
+                    "_account_id": 1,
+                    "email": "dev@example.com"
+                }]
+            })))
+            .mount(&server)
+            .await;
+
+        let client = test_client(&server.uri());
+
+        let payload = AddReviewerRequest {
+            reviewer: "dev@example.com".into(),
+            confirmed: None,
+            state: None,
+            notify: None,
+        };
+        let result = client.add_reviewer("123", &payload).await.unwrap();
+        assert_eq!(result.reviewers.len(), 1);
+
+        let requests = server
+            .received_requests()
+            .await
+            .expect("no requests received");
+        let body = &requests[0].body;
+        let body_string = String::from_utf8_lossy(body);
+        assert!(
+            !body_string.contains("\"confirmed\""),
+            "request body unexpectedly contains `confirmed`: {body_string}"
+        );
+    }
+
+    #[tokio::test]
     async fn test_set_topic_parses_json_string() {
         let server = MockServer::start().await;
 
@@ -1082,5 +1134,50 @@ mod tests {
         };
         let result = client.set_topic("123", &payload).await.unwrap();
         assert_eq!(result, Some("mytopic".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_get_commit_message_uses_message_endpoint() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/changes/123/message"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "full_message": "Fix stuff\n\nDetails here\n\nChange-Id: Iabc123"
+            })))
+            .mount(&server)
+            .await;
+
+        let client = test_client(&server.uri());
+        let result = client.get_commit_message("123").await.unwrap();
+        assert_eq!(
+            result.full_message,
+            "Fix stuff\n\nDetails here\n\nChange-Id: Iabc123"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_revision_commit_uses_revision_path() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/changes/123/revisions/2/commit"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "subject": "Fix stuff",
+                "message": "Fix stuff\n\nChange-Id: Iabc",
+                "commit": "abcd1234efgh",
+                "author": {"name": "Dev", "email": "dev@example.com", "date": "2026-01-01 00:00:00", "tz": 60},
+                "committer": {"name": "CI", "email": "ci@example.com", "date": "2026-01-01 00:00:00", "tz": 60},
+                "parents": [{"commit": "11112222", "subject": "parent"}]
+            })))
+            .mount(&server)
+            .await;
+
+        let client = test_client(&server.uri());
+        let result = client.get_revision_commit("123", "2").await.unwrap();
+        assert_eq!(result.subject, "Fix stuff");
+        assert_eq!(result.commit, "abcd1234efgh");
+        assert_eq!(result.author.name, "Dev");
+        assert_eq!(result.parents[0].commit, "11112222");
     }
 }

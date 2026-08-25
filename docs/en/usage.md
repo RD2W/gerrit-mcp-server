@@ -219,7 +219,7 @@ healthcheck:
 
 ## MCP tools reference
 
-The server exposes **29 tools** covering the full Gerrit REST API.
+The server exposes **32 tools** covering the full Gerrit REST API.
 
 ### Querying changes
 
@@ -235,7 +235,10 @@ The server exposes **29 tools** covering the full Gerrit REST API.
 
 | Tool | Description | Key parameters |
 |---|---|---|
-| `get_commit_message` | Get commit message for a change | `change_id` |
+| `get_commit_message` | Get verbatim commit message for a change (`GET /changes/{id}/message`) | `change_id` |
+| `get_revision_commit` | Get the full commit object of a revision | `change_id`, `revision_id?` |
+| `get_related_changes` | Get changes related to a revision (relation chain) | `change_id`, `revision_id?` |
+| `get_git_parent_changes` | Get parent changes of a change (`parentof:` query) | `change_id`, `limit?` |
 | `list_change_files` | List files modified in a change | `change_id` |
 | `get_file_diff` | Get the diff for a file in a change | `change_id`, `file_path` |
 | `list_change_comments` | List published comments on a change | `change_id` |
@@ -259,7 +262,7 @@ The server exposes **29 tools** covering the full Gerrit REST API.
 
 | Tool | Description | Key parameters |
 |---|---|---|
-| `add_reviewer` | Add a reviewer to a change | `change_id`, `reviewer`, `state?` |
+| `add_reviewer` | Add a reviewer to a change | `change_id`, `reviewer`, `state?`, `confirmed?` |
 | `suggest_reviewers` | Get reviewer suggestions | `change_id`, `query`, `limit?`, `exclude_groups?` |
 | `set_labels` | Set one or more label votes on a change | `change_id`, `labels`, `message?`, `gerrit_base_url?` |
 | `post_review_comment` | Post a review comment | `change_id`, `file_path`, `line_number`, `message`, `unresolved?`, `labels?` |

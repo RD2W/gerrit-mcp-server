@@ -238,6 +238,63 @@ pub struct GetBugsFromClParams {
     pub gerrit_base_url: Option<String>,
 }
 
+/// Parameters for getting the full commit object of a revision.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[schemars(description = "Get the full commit object of a revision")]
+pub struct GetRevisionCommitParams {
+    #[schemars(description = "Gerrit change ID (numeric or Change-Id hash)")]
+    pub change_id: String,
+
+    #[serde(default = "default_current_revision")]
+    #[schemars(default, description = "Revision ID (default: current)")]
+    pub revision_id: Option<String>,
+
+    #[serde(default)]
+    #[schemars(
+        default,
+        description = "Base URL of the Gerrit instance (overrides config)"
+    )]
+    pub gerrit_base_url: Option<String>,
+}
+
+/// Parameters for getting related changes of a revision.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[schemars(description = "Get changes related to a revision (relation chain)")]
+pub struct GetRelatedChangesParams {
+    #[schemars(description = "Gerrit change ID (numeric or Change-Id hash)")]
+    pub change_id: String,
+
+    #[serde(default = "default_current_revision")]
+    #[schemars(default, description = "Revision ID (default: current)")]
+    pub revision_id: Option<String>,
+
+    #[serde(default)]
+    #[schemars(
+        default,
+        description = "Base URL of the Gerrit instance (overrides config)"
+    )]
+    pub gerrit_base_url: Option<String>,
+}
+
+/// Parameters for getting parent changes of a change.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[schemars(description = "Get parent changes of a change (parentof query)")]
+pub struct GetGitParentChangesParams {
+    #[schemars(description = "Gerrit change ID (numeric or Change-Id hash)")]
+    pub change_id: String,
+
+    #[serde(default)]
+    #[schemars(default, description = "Max results (default 10)")]
+    pub limit: Option<u32>,
+
+    #[serde(default)]
+    #[schemars(
+        default,
+        description = "Base URL of the Gerrit instance (overrides config)"
+    )]
+    pub gerrit_base_url: Option<String>,
+}
+
 /// Parameters for suggesting reviewers for a change.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[schemars(description = "Suggest reviewers for a Gerrit change")]
@@ -349,6 +406,13 @@ pub struct AddReviewerParams {
     #[serde(default = "default_reviewer_state")]
     #[schemars(default, description = "Reviewer state (REVIEWER, CC)")]
     pub state: Option<String>,
+
+    #[serde(default)]
+    #[schemars(
+        default,
+        description = "Explicitly confirm the reviewer (skips server confirmation policy)"
+    )]
+    pub confirmed: Option<bool>,
 }
 
 /// Parameters for marking a change as ready for review.
