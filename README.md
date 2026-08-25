@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/rd2w/gerrit-mcp-server/actions/workflows/ci.yml/badge.svg)](https://github.com/rd2w/gerrit-mcp-server/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/rd2w/gerrit-mcp-server?color=blue)](https://github.com/rd2w/gerrit-mcp-server/releases)
-[![Rust](https://img.shields.io/badge/rust-1.97%2B-orange.svg)](https://www.rust-lang.org)
+[![Rust](https://img.shields.io/badge/rust-1.98%2B-orange.svg)](https://www.rust-lang.org)
 [![Edition](https://img.shields.io/badge/edition-2024-blue.svg)](https://doc.rust-lang.org/edition-guide/rust-2024/)
 [![License](https://img.shields.io/badge/license-GPL--3.0--or--later-green.svg)](LICENSE)
 

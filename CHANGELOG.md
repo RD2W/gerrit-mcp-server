@@ -14,6 +14,11 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   change via the `parentof:` query). All pure core API; plugin tools remain
   out of scope.
 
+### Changed
+
+- **Minimum supported Rust version raised to 1.98** — the project and the
+  published Docker image are now built with Rust 1.98 (edition 2024).
+
 ### Fixed
 
 - **`add_reviewer` no longer bypasses server confirmation policy** — the tool
