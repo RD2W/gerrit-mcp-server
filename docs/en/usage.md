@@ -235,7 +235,7 @@ The server exposes **32 tools** covering the full Gerrit REST API.
 
 | Tool | Description | Key parameters |
 |---|---|---|
-| `get_commit_message` | Get verbatim commit message for a change (`GET /changes/{id}/message`) | `change_id` |
+| `get_commit_message` | Get verbatim commit message for a change (`GET /changes/{id}/message`; falls back to the revision commit endpoint on Gerrit < 3.10) | `change_id` |
 | `get_revision_commit` | Get the full commit object of a revision | `change_id`, `revision_id?` |
 | `get_related_changes` | Get changes related to a revision (relation chain) | `change_id`, `revision_id?` |
 | `get_git_parent_changes` | Get parent changes of a change (`parentof:` query) | `change_id`, `limit?` |

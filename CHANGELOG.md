@@ -36,6 +36,11 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the dedicated `suggestion` argument instead, which embeds a
   `` ```suggestion `` block.
 
+- **`get_commit_message` works on Gerrit < 3.10** — when `GET /changes/{id}/message`
+  (added in Gerrit 3.10) returns 404, the tool now falls back to
+  `GET /changes/{id}/revisions/current/commit` and returns `CommitInfo.message`
+  unchanged. Verbatim contract on 3.10+ is preserved.
+
 - **`get_commit_message` returns the verbatim commit message** — the tool now
   reads `GET /changes/{id}/message` and returns `full_message` as-is, instead of
   a reformatted `CommitInfo` summary with synthetic headers and 8-character

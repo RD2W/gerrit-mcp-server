@@ -237,7 +237,7 @@ healthcheck:
 
 | Инструмент | Описание | Основные параметры |
 |---|---|---|
-| `get_commit_message` | Дословное сообщение коммита для изменения (`GET /changes/{id}/message`) | `change_id` |
+| `get_commit_message` | Дословное сообщение коммита для изменения (`GET /changes/{id}/message`; на Gerrit < 3.10 — фолбэк на revision commit endpoint) | `change_id` |
 | `get_revision_commit` | Полный объект коммита ревизии | `change_id`, `revision_id?` |
 | `get_related_changes` | Изменения, связанные с ревизией (цепочка зависимостей) | `change_id`, `revision_id?` |
 | `get_git_parent_changes` | Родительские изменения (`parentof:`-запрос) | `change_id`, `limit?` |
