@@ -14,7 +14,7 @@ use gerrit_mcp::mcp::GerritServer;
 use gerrit_mcp::mcp::tools::*;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::ContentBlock;
-use wiremock::matchers::{header, method, path};
+use wiremock::matchers::{header, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn test_tls_config() -> TlsConfig {
@@ -457,6 +457,50 @@ async fn test_query_changes_full_pipeline() {
     assert!(text.contains("First change"));
     assert!(text.contains("200_"));
     assert!(text.contains("Second change"));
+}
+
+/// Regression: the tool used to send `n=2?o=LABELS`, which Gerrit rejects with
+/// `HTTP 400: "2?o=LABELS" is not a valid value for "-n"`. The mock below only
+/// answers when `q`, `n` and `o` arrive as separate parameters.
+#[tokio::test]
+async fn test_query_changes_limit_and_options_reach_gerrit_separately() {
+    let mock_server = MockServer::start().await;
+
+    let change = r#"{"id":"p~b~42","_number":42,"subject":"With labels","status":"NEW","project":"p","branch":"b","owner":{"_account_id":1},"updated":"2025-01-01 00:00:00"}"#;
+
+    Mock::given(method("GET"))
+        .and(path("/changes/"))
+        .and(query_param("q", "status:open"))
+        .and(query_param("n", "2"))
+        .and(query_param("o", "LABELS"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(format!("[{change}]")))
+        .mount(&mock_server)
+        .await;
+
+    let client = GerritClient::new(GerritClientConfig {
+        base_url: mock_server.uri(),
+        auth: AuthMode::Bearer("token".into()),
+        timeout: Duration::from_secs(5),
+        tls: test_tls_config(),
+        disable_url_normalization: true,
+    })
+    .unwrap();
+
+    let server = GerritServer::new(GerritService::new(client));
+
+    let params = QueryChangesParams {
+        query: "status:open".into(),
+        gerrit_base_url: None,
+        limit: Some(2),
+        options: Some(vec!["LABELS".into()]),
+    };
+    let result = server.query_changes(Parameters(params)).await;
+    let text = extract_text(result);
+
+    assert!(
+        text.contains("With labels"),
+        "expected the change to come back, got: {text}"
+    );
 }
 
 #[tokio::test]

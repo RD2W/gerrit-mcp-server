@@ -4,6 +4,19 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to
 follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **`query_changes` sent `options` inside the `limit` value** — with both
+  `limit` and `options` set the client built `…&n=2?o=LABELS`, so Gerrit
+  answered `HTTP 400: "2?o=LABELS" is not a valid value for "-n"`; without a
+  limit the options were swallowed by the `q=` value instead. Query strings are
+  now assembled by a single helper that emits the `?`/`&` separators and
+  percent-encodes values, so options reach Gerrit as their own `o=` parameters
+  in `query_changes`, `query_changes_by_date_and_filters`, `get_change_details`,
+  `changes_submitted_together` and `suggest_reviewers`.
+
 ## [1.4.0] — 2026-08-25
 
 ### Added

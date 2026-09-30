@@ -202,21 +202,30 @@ impl GerritClient {
 
     // -- Query helpers ------------------------------------------------------
 
-    /// Build `?o=OPT1&o=OPT2` query string suffix for Gerrit option lists.
-    fn build_options_query(options: &[String]) -> String {
-        if options.is_empty() {
+    /// Build a `?k=v&k2=v2` query suffix from ordered key/value pairs.
+    ///
+    /// Values are percent-encoded; keys are trusted literals supplied by this
+    /// module. Returns an empty string when `params` is empty, so callers never
+    /// have to choose between `?` and `&` themselves.
+    fn build_query(params: &[(&str, String)]) -> String {
+        if params.is_empty() {
             return String::new();
         }
-        let mut parts = String::from("?o=");
-        let mut first = true;
-        for opt in options {
-            if !first {
-                parts.push_str("&o=");
+        let mut parts = String::from("?");
+        for (index, (key, value)) in params.iter().enumerate() {
+            if index > 0 {
+                parts.push('&');
             }
-            first = false;
-            parts.push_str(&Self::percent_encode(opt));
+            parts.push_str(key);
+            parts.push('=');
+            parts.push_str(&Self::percent_encode(value));
         }
         parts
+    }
+
+    /// `o=` pairs for a Gerrit option list, preserving the caller's order.
+    fn option_params(options: &[String]) -> Vec<(&'static str, String)> {
+        options.iter().map(|opt| ("o", opt.clone())).collect()
     }
 
     fn decode_diff_json(raw: &str) -> Result<String, DomainError> {
@@ -274,10 +283,12 @@ impl GerritRepository for GerritClient {
         limit: Option<u32>,
         options: &[String],
     ) -> Result<Vec<Change>, DomainError> {
-        let q = Self::percent_encode(query);
-        let limit_param = limit.map(|n| format!("&n={n}")).unwrap_or_default();
-        let o = Self::build_options_query(options);
-        let url = self.url(&format!("/changes/?q={q}{limit_param}{o}"));
+        let mut params: Vec<(&str, String)> = vec![("q", query.to_string())];
+        if let Some(n) = limit {
+            params.push(("n", n.to_string()));
+        }
+        params.extend(Self::option_params(options));
+        let url = self.url(&format!("/changes/{}", Self::build_query(&params)));
         self.get_json(&url).await
     }
 
@@ -287,8 +298,10 @@ impl GerritRepository for GerritClient {
         options: &[String],
     ) -> Result<ChangeDetail, DomainError> {
         let cid = Self::percent_encode(change_id);
-        let o = Self::build_options_query(options);
-        let url = self.url(&format!("/changes/{cid}/detail{o}"));
+        let url = self.url(&format!(
+            "/changes/{cid}/detail{}",
+            Self::build_query(&Self::option_params(options))
+        ));
         self.get_json(&url).await
     }
 
@@ -385,14 +398,17 @@ impl GerritRepository for GerritClient {
         reviewer_state: Option<&str>,
     ) -> Result<Vec<SuggestedReviewer>, DomainError> {
         let cid = Self::percent_encode(change_id);
-        let q = Self::percent_encode(query);
-        let limit_param = limit.map(|n| format!("&n={n}")).unwrap_or_default();
-        let eg = format!("&exclude-groups={exclude_groups}");
-        let rs = reviewer_state
-            .map(|s| format!("&reviewer-state={}", Self::percent_encode(s)))
-            .unwrap_or_default();
+        let mut params: Vec<(&str, String)> = vec![("q", query.to_string())];
+        if let Some(n) = limit {
+            params.push(("n", n.to_string()));
+        }
+        params.push(("exclude-groups", exclude_groups.to_string()));
+        if let Some(state) = reviewer_state {
+            params.push(("reviewer-state", state.to_string()));
+        }
         let url = self.url(&format!(
-            "/changes/{cid}/suggest_reviewers?q={q}{limit_param}{eg}{rs}"
+            "/changes/{cid}/suggest_reviewers{}",
+            Self::build_query(&params)
         ));
         self.get_json(&url).await
     }
@@ -403,8 +419,10 @@ impl GerritRepository for GerritClient {
         options: &[String],
     ) -> Result<SubmittedTogether, DomainError> {
         let cid = Self::percent_encode(change_id);
-        let o = Self::build_options_query(options);
-        let url = self.url(&format!("/changes/{cid}/submitted_together{o}"));
+        let url = self.url(&format!(
+            "/changes/{cid}/submitted_together{}",
+            Self::build_query(&Self::option_params(options))
+        ));
         let response: SubmittedTogetherResponse = self.get_json(&url).await?;
         Ok(response.into())
     }
@@ -672,6 +690,31 @@ mod tests {
         }
     }
 
+    /// Query pairs of the single request the mock server received.
+    ///
+    /// Path-only matchers cannot catch a separator bug inside the query string,
+    /// so these tests assert the exact URL the client built.
+    async fn received_query_pairs(server: &MockServer) -> Vec<(String, String)> {
+        let requests = server
+            .received_requests()
+            .await
+            .expect("mock server dropped its request log");
+        assert_eq!(requests.len(), 1, "expected exactly one request");
+        requests[0]
+            .url
+            .query_pairs()
+            .map(|(k, v)| (k.into_owned(), v.into_owned()))
+            .collect()
+    }
+
+    /// Serves `[]` for any GET so tests can inspect the request instead of the body.
+    async fn mount_empty_changes_mock(server: &MockServer) {
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("[]"))
+            .mount(server)
+            .await;
+    }
+
     // -- wiremock integration tests ----------------------------------------
 
     #[tokio::test]
@@ -697,6 +740,141 @@ mod tests {
         assert_eq!(result.len(), 1);
         assert_eq!(result[0]._number, 12345);
         assert_eq!(result[0].subject, "Test change");
+    }
+
+    /// Regression: Gerrit answered `HTTP 400: "2?o=LABELS" is not a valid value
+    /// for "-n"` because the options were appended to the `n=` value instead of
+    /// being sent as their own parameter.
+    #[tokio::test]
+    async fn test_query_changes_limit_and_options_are_separate_params() {
+        let server = MockServer::start().await;
+        mount_empty_changes_mock(&server).await;
+
+        let client = test_client(&format!("{}/a", server.uri()));
+        let result = client
+            .query_changes("status:open", Some(2), &["LABELS".to_string()])
+            .await
+            .unwrap();
+
+        assert!(result.is_empty());
+        assert_eq!(
+            received_query_pairs(&server).await,
+            vec![
+                ("q".to_string(), "status:open".to_string()),
+                ("n".to_string(), "2".to_string()),
+                ("o".to_string(), "LABELS".to_string()),
+            ]
+        );
+    }
+
+    /// Regression: without a limit the options used to be swallowed by the `q=`
+    /// value, so Gerrit never saw them.
+    #[tokio::test]
+    async fn test_query_changes_options_without_limit_are_separate_params() {
+        let server = MockServer::start().await;
+        mount_empty_changes_mock(&server).await;
+
+        let client = test_client(&format!("{}/a", server.uri()));
+        client
+            .query_changes("status:open", None, &["LABELS".to_string()])
+            .await
+            .unwrap();
+
+        assert_eq!(
+            received_query_pairs(&server).await,
+            vec![
+                ("q".to_string(), "status:open".to_string()),
+                ("o".to_string(), "LABELS".to_string()),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_query_changes_repeated_options_keep_order() {
+        let server = MockServer::start().await;
+        mount_empty_changes_mock(&server).await;
+
+        let client = test_client(&format!("{}/a", server.uri()));
+        client
+            .query_changes(
+                "status:open",
+                Some(5),
+                &[
+                    "CURRENT_REVISION".to_string(),
+                    "DETAILED_ACCOUNTS".to_string(),
+                ],
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            received_query_pairs(&server).await,
+            vec![
+                ("q".to_string(), "status:open".to_string()),
+                ("n".to_string(), "5".to_string()),
+                ("o".to_string(), "CURRENT_REVISION".to_string()),
+                ("o".to_string(), "DETAILED_ACCOUNTS".to_string()),
+            ]
+        );
+    }
+
+    /// Behavior lock for the refactor: for `detail` the options are the first
+    /// query parameter, so they keep the `?o=` form.
+    #[tokio::test]
+    async fn test_get_change_detail_options_are_query_params() {
+        let server = MockServer::start().await;
+        mount_empty_changes_mock(&server).await;
+
+        let client = test_client(&format!("{}/a", server.uri()));
+        let _ = client
+            .get_change_detail("35250", &["CURRENT_REVISION".to_string()])
+            .await;
+
+        assert_eq!(
+            received_query_pairs(&server).await,
+            vec![("o".to_string(), "CURRENT_REVISION".to_string())]
+        );
+    }
+
+    /// Behavior lock for the refactor: `submitted_together` has no other query
+    /// parameter, so the leading `?` must survive.
+    #[tokio::test]
+    async fn test_changes_submitted_together_options_are_query_params() {
+        let server = MockServer::start().await;
+        mount_empty_changes_mock(&server).await;
+
+        let client = test_client(&format!("{}/a", server.uri()));
+        let _ = client
+            .changes_submitted_together("35250", &["CURRENT_REVISION".to_string()])
+            .await;
+
+        assert_eq!(
+            received_query_pairs(&server).await,
+            vec![("o".to_string(), "CURRENT_REVISION".to_string())]
+        );
+    }
+
+    /// Behavior lock for the refactor: all four `suggest_reviewers` parameters
+    /// keep their names, order and values.
+    #[tokio::test]
+    async fn test_suggest_reviewers_params_are_query_params() {
+        let server = MockServer::start().await;
+        mount_empty_changes_mock(&server).await;
+
+        let client = test_client(&format!("{}/a", server.uri()));
+        let _ = client
+            .suggest_reviewers("35250", "reviewer:alice", Some(3), true, Some("REVIEWER"))
+            .await;
+
+        assert_eq!(
+            received_query_pairs(&server).await,
+            vec![
+                ("q".to_string(), "reviewer:alice".to_string()),
+                ("n".to_string(), "3".to_string()),
+                ("exclude-groups".to_string(), "true".to_string()),
+                ("reviewer-state".to_string(), "REVIEWER".to_string()),
+            ]
+        );
     }
 
     #[tokio::test]
@@ -786,32 +964,68 @@ mod tests {
         assert!(encoded.contains("-"));
     }
 
-    // -- build_options_query -----------------------------------------------
+    // -- build_query -------------------------------------------------------
 
     #[test]
-    fn build_options_query_empty() {
-        let result = GerritClient::build_options_query(&[]);
-        assert!(result.is_empty());
+    fn build_query_empty_is_empty() {
+        assert!(GerritClient::build_query(&[]).is_empty());
     }
 
     #[test]
-    fn build_options_query_multiple() {
-        let result = GerritClient::build_options_query(&[
-            "CURRENT_REVISION".into(),
-            "DETAILED_ACCOUNTS".into(),
+    fn build_query_single_pair() {
+        let result = GerritClient::build_query(&[("q", "status:open".to_string())]);
+        assert_eq!(result, "?q=status%3Aopen");
+    }
+
+    #[test]
+    fn build_query_joins_pairs_with_ampersand() {
+        let result = GerritClient::build_query(&[
+            ("q", "status:open".to_string()),
+            ("n", "2".to_string()),
+            ("o", "LABELS".to_string()),
         ]);
-        assert!(
-            result.starts_with("?o="),
-            "should start with ?o=, got: {result}"
+        assert_eq!(result, "?q=status%3Aopen&n=2&o=LABELS");
+    }
+
+    /// The separator bug class: `?` may appear exactly once, at the front.
+    #[test]
+    fn build_query_never_emits_a_second_question_mark() {
+        let result = GerritClient::build_query(&[
+            ("q", "status:open".to_string()),
+            ("n", "2".to_string()),
+            ("o", "LABELS".to_string()),
+            ("o", "CURRENT_REVISION".to_string()),
+        ]);
+        assert_eq!(result.matches('?').count(), 1, "got: {result}");
+    }
+
+    #[test]
+    fn build_query_preserves_repeated_keys_order() {
+        let result = GerritClient::build_query(&[
+            ("o", "CURRENT_REVISION".to_string()),
+            ("o", "DETAILED_ACCOUNTS".to_string()),
+        ]);
+        assert_eq!(result, "?o=CURRENT_REVISION&o=DETAILED_ACCOUNTS");
+    }
+
+    #[test]
+    fn option_params_maps_each_option_to_o() {
+        let params = GerritClient::option_params(&[
+            "CURRENT_REVISION".to_string(),
+            "DETAILED_ACCOUNTS".to_string(),
+        ]);
+        assert_eq!(
+            params,
+            vec![
+                ("o", "CURRENT_REVISION".to_string()),
+                ("o", "DETAILED_ACCOUNTS".to_string()),
+            ]
         );
-        assert!(
-            result.contains("?o=CURRENT_REVISION"),
-            "should contain first option"
-        );
-        assert!(
-            result.contains("&o=DETAILED_ACCOUNTS"),
-            "should contain second option"
-        );
+    }
+
+    #[test]
+    fn option_params_empty_for_no_options() {
+        assert!(GerritClient::option_params(&[]).is_empty());
     }
 
     // -- strip_xssi --------------------------------------------------------
