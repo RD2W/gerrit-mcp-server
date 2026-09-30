@@ -13,13 +13,44 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the new `[bugs]` section (`[[bugs.trackers]]` with `name`, `footer_keys`,
   `footer_value` and optional `inline`), so supporting another bug tracker needs
   no code change. Without the section the built-in Bugzilla-style set
-  (`Bug:`/`Fixes:`/`Closes:`, inline `b/123`) is used, so existing behaviour is
-  unchanged. The config reference ships Bugzilla, Jira and Yandex Tracker
-  examples. Output stays flat for a single tracker and becomes grouped by
-  tracker name (`bugzilla: 12345; jira: PROJ-1234`) as soon as several match.
-  Patterns are compiled with `regex-lite` and validated at startup: an invalid
-  pattern aborts with the offending config path instead of silently extracting
-  nothing, and the effective tracker set is logged at startup.
+  (`Bug:`/`Fixes:`/`Closes:`, inline `b/123`) is used, so configs *without*
+  `[bugs]` behave exactly as before. The config reference ships Bugzilla, Jira
+  and Yandex Tracker examples. Output stays flat for a single tracker and
+  becomes grouped by tracker name (`bugzilla: 12345; jira: PROJ-1234`) as soon
+  as several match. Patterns are compiled with `regex-lite` and validated at
+  startup: an invalid pattern aborts with the offending config path instead of
+  silently extracting nothing, and the effective tracker set is logged at
+  startup.
+
+### Changed
+
+- **Rollout order for the `[bugs]` section** — `Config` is deserialised with
+  `deny_unknown_fields`, so an image older than the release that introduces
+  `[bugs]` fails at startup as soon as the config contains the section. Publish
+  the new image **before** restarting a deployment with the new config; rolling
+  the image back requires removing `[bugs]` from the config first. The default
+  tracker set stays Bugzilla-only, so a Gerrit instance that uses Jira has to
+  add its own `[[bugs.trackers]]` entry (see `config/config.example.toml`).
+
+### Fixed
+
+- **`get_change_details` could never print the `Bugs:` line** — Gerrit
+  serialises `ChangeDetail` with `LOWER_CASE_WITH_UNDERSCORES`, but the model
+  asked for `currentRevision`/`currentRevisionNumber`, so `current_revision`
+  stayed `None` on a live Gerrit and the commit message was never found. Both
+  fields now declare Gerrit's real wire keys, and a wire-level regression test
+  feeds the real payload shape.
+- **`list_change_files` reported `(+0, -0)` for every file** — `FileInfo` was
+  read with camelCase keys (`linesInserted`, `linesDeleted`) while Gerrit sends
+  `lines_inserted`/`lines_deleted`, and `#[serde(default)]` turned every miss
+  into a silent zero. Modified files without a `status` also showed `[?]`
+  instead of `[M]`, and the `C` status had no arm at all; both now map
+  correctly.
+- **`get_change_details` printed ~110 lines of zero-value votes** — with
+  `DETAILED_LABELS` Gerrit returns an entry with `value: 0` for every account
+  allowed to vote, and every such entry was printed as a vote. Only non-zero
+  values are reported now, and the tool requests `DETAILED_ACCOUNTS` so voters
+  render as `Jane Doe <jane@example.com>` instead of `by account <id>`.
 
 ## [1.4.1] — 2026-09-30
 

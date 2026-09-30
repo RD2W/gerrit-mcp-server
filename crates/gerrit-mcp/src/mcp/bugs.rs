@@ -25,7 +25,9 @@ use regex_lite::Regex;
 pub struct BugTrackerSpec {
     /// Tracker name; shown in the output when several trackers produce hits.
     pub name: String,
-    /// Lower-cased footer prefixes this tracker listens to.
+    /// Footer prefixes in their lower-cased display form, as reported by
+    /// [`describe`](Self::describe). Matching uses the configured spellings
+    /// instead, so a non-ASCII key keeps working in both cases.
     pub footer_keys: Vec<String>,
     /// Anchored against every token of a matched footer value.
     footer_value: Regex,
@@ -44,22 +46,13 @@ pub struct BugHit {
     pub id: String,
 }
 
-/// Escapes a literal string so it can be embedded into a pattern.
-///
-/// `regex-lite` has no `escape()` helper, and footer keys are user-supplied.
-fn escape_literal(value: &str) -> String {
-    let mut out = String::with_capacity(value.len());
-    for ch in value.chars() {
-        if !ch.is_ascii_alphanumeric() {
-            out.push('\\');
-        }
-        out.push(ch);
-    }
-    out
-}
-
 impl BugTrackerSpec {
     /// Compiles one tracker definition.
+    ///
+    /// `footer_keys` are matched case-insensitively, but `regex-lite`'s `(?i)`
+    /// folds ASCII letters only. A key containing non-ASCII letters therefore
+    /// contributes both its original and its lower-cased spelling, e.g. `Баг`
+    /// matches `Баг:` and `баг:`.
     ///
     /// # Errors
     /// Returns a human-readable message naming the offending field when a
@@ -75,11 +68,23 @@ impl BugTrackerSpec {
             return Err("name must not be empty".to_string());
         }
 
-        let keys: Vec<String> = footer_keys
-            .iter()
-            .map(|k| k.trim().to_lowercase())
-            .filter(|k| !k.is_empty())
-            .collect();
+        let mut keys: Vec<String> = Vec::new();
+        let mut alternatives: Vec<String> = Vec::new();
+        for key in footer_keys {
+            let key = key.trim();
+            if key.is_empty() {
+                continue;
+            }
+            // `(?i)баг` matches `баг` but never `Баг`, so lowering a non-ASCII
+            // key would silently break its capitalised form; both spellings go
+            // into the alternation instead.
+            let lower = key.to_lowercase();
+            alternatives.push(regex_lite::escape(key));
+            if lower != key {
+                alternatives.push(regex_lite::escape(&lower));
+            }
+            keys.push(lower);
+        }
         if keys.is_empty() {
             return Err("footer_keys must contain at least one non-empty key".to_string());
         }
@@ -88,11 +93,7 @@ impl BugTrackerSpec {
             return Err("footer_value must not be empty".to_string());
         }
 
-        let alternation = keys
-            .iter()
-            .map(|k| escape_literal(k))
-            .collect::<Vec<_>>()
-            .join("|");
+        let alternation = alternatives.join("|");
         let footer_line = Regex::new(&format!(r"(?im)^\s*(?:{alternation})\s*:\s*(.+)$"))
             .map_err(|e| format!("footer_keys: {e}"))?;
 
@@ -176,7 +177,8 @@ impl BugTrackerSpec {
 /// Extracts tickets from `message` using `trackers`.
 ///
 /// Hits keep the configured tracker order; identifiers are sorted inside each
-/// tracker and de-duplicated across all of them.
+/// tracker. Duplicates are removed per `(tracker, id)` pair, so the same id
+/// found by two different trackers is reported once for each of them.
 pub fn extract_bugs(message: &str, trackers: &[BugTrackerSpec]) -> Vec<BugHit> {
     let mut hits: Vec<BugHit> = Vec::new();
     for tracker in trackers {
@@ -443,6 +445,13 @@ mod tests {
         let tracker = BugTrackerSpec::compile("x", &["BUG #".to_string()], r"(\d+)", None).unwrap();
         let hits = extract_bugs("bug #: 7", &[tracker]);
         assert_eq!(ids(&hits), vec!["7"]);
+    }
+
+    #[test]
+    fn non_ascii_footer_key_matches_both_cases() {
+        let tracker = BugTrackerSpec::compile("x", &["Баг".to_string()], r"(\d+)", None).unwrap();
+        let hits = extract_bugs("Баг: 12345\nбаг: 67890", &[tracker]);
+        assert_eq!(ids(&hits), vec!["12345", "67890"]);
     }
 
     // --- describe -----------------------------------------------------------

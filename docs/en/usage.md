@@ -71,6 +71,12 @@ Defining at least one `[[bugs.trackers]]` replaces that default entirely.
 | `footer_value` | yes      | Pattern matched against every footer value token (anchored)   |
 | `inline`       | no       | Pattern searched anywhere in the commit message               |
 
+`footer_keys` are matched case-insensitively, but `regex-lite`'s `(?i)` folds
+ASCII letters only. A key containing non-ASCII letters therefore matches both
+the spelling as configured and its lower-cased form — `Баг` matches `Баг:` and
+`баг:` — while other mixed-case spellings of the same key are not folded: list
+every spelling you need as a separate key.
+
 Extraction runs in two phases per tracker:
 
 1. **footer** — every line matching `^\s*(?:key1|key2)\s*:\s*(.+)$` is
@@ -109,6 +115,14 @@ footer_keys = ["tracker", "yt"]
 # restrict the pattern to the queues you actually use.
 footer_value = "((?:TREKER|BUGS)-\\d+)"
 ```
+
+**Rollout.** `[bugs]` is a new section and the config is parsed with
+`deny_unknown_fields`, so an image older than this release refuses to start
+when the section is present. Publish the new image **before** restarting a
+deployment with the new config; to roll the image back, remove `[bugs]` from
+the config first. The default tracker set stays Bugzilla-only — a Gerrit
+instance that uses Jira needs its own `[[bugs.trackers]]` entry (see
+`config/config.example.toml`).
 
 ### `[cache]` — in-memory cache
 

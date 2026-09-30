@@ -73,9 +73,12 @@ pub struct ChangeDetail {
     pub branch: String,
     pub owner: AccountInfo,
     pub updated: String,
-    #[serde(default)]
+    /// Gerrit serialises this as `current_revision` (Gson
+    /// `LOWER_CASE_WITH_UNDERSCORES`), not `currentRevision`.
+    #[serde(default, rename = "current_revision")]
     pub current_revision: Option<String>,
-    #[serde(default)]
+    /// Gerrit wire key: `current_revision_number`.
+    #[serde(default, rename = "current_revision_number")]
     pub current_revision_number: Option<u64>,
     #[serde(default)]
     pub revisions: BTreeMap<String, RevisionInfo>,

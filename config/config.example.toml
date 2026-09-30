@@ -113,7 +113,10 @@ read_only = false
 
 # Each tracker: name + footer prefixes + a pattern for the footer value.
 #   name         — required; shown in the output when several trackers match
-#   footer_keys  — required; footer line prefixes, case-insensitive
+#   footer_keys  — required; footer line prefixes, case-insensitive for ASCII
+#                  letters only — a key with non-ASCII letters matches both the
+#                  configured spelling and its lower-cased form (`Баг` matches
+#                  `Баг:` and `баг:`); list other spellings as extra keys
 #   footer_value — required; matched against every footer value token as a
 #                  whole (anchored for you)
 #   inline       — optional; searched anywhere in the commit message

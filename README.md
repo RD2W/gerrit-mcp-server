@@ -116,6 +116,7 @@ See `config/config.example.toml` for all options. Key sections:
 | `[gerrit]`      | Base URL, TLS (CA cert path, verify_ssl), timeout                     |
 | `[gerrit.auth]` | Auth mode (`http_basic`/`bearer`/`git_cookies`/`none`), env var names |
 | `[service]`     | Default max results                                                   |
+| `[bugs]`        | Ticket extraction; see `config/config.example.toml`                   |
 | `[cache]`       | In-memory TTL + LRU cache for repeated queries                        |
 | `[rate_limit]`  | Token-bucket rate limiter (protects Gerrit)                           |
 | `[transport]`   | Transport mode, bind address, `allowed_hosts`, `mcp_auth_token`       |
@@ -275,6 +276,7 @@ docker compose up -d
 | `[gerrit]`      | Базовый URL, TLS (путь к CA-сертификату, verify_ssl), тайм-аут                                |
 | `[gerrit.auth]` | Режим аутентификации (`http_basic`/`bearer`/`git_cookies`/`none`), имена переменных окружения |
 | `[service]`     | Максимум результатов по умолчанию                                                             |
+| `[bugs]`        | Извлечение тикетов; см. `config/config.example.toml`                                          |
 | `[cache]`       | TTL + LRU кэш в памяти для повторных запросов                                                 |
 | `[rate_limit]`  | Ограничитель частоты token bucket (защищает Gerrit)                                           |
 | `[transport]`   | Режим транспорта, адрес, `allowed_hosts`, `mcp_auth_token`                                    |

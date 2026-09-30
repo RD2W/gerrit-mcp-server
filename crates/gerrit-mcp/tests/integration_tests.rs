@@ -200,8 +200,8 @@ async fn test_client_get_change_detail_parsing() {
             "email": "alice@example.com"
         },
         "updated": "2026-07-01 12:00:00",
-        "currentRevision": "rev-hash-abc",
-        "currentRevisionNumber": 3,
+        "current_revision": "rev-hash-abc",
+        "current_revision_number": 3,
         "revisions": {
             "rev-hash-abc": {
                 "_number": 3,
@@ -749,7 +749,9 @@ async fn test_get_change_details_prints_only_real_votes() {
 
 /// Ruling: `Vote <label>: <value> (by <display>)`, where `<display>` prefers
 /// `Name <email>`, then `Name`, then `<email>`, and falls back to `#<account id>`
-/// when Gerrit resolves neither (anonymous access, missing permission). Labels
+/// when Gerrit resolves neither. The fallback covers the reachable case of an
+/// account that is visible but has its name and email hidden — even anonymous
+/// requests still carry `_account_id`, so an id-less vote cannot occur. Labels
 /// come from a `BTreeMap`, so the lines stay in alphabetical label order.
 #[tokio::test]
 async fn test_get_change_details_prints_voter_display_names() {
@@ -801,6 +803,67 @@ async fn test_get_change_details_prints_voter_display_names() {
             "Vote Workflow: 1 (by carol@example.com)",
         ],
         "expected name/email with a numeric-id fallback, got:\n{text}"
+    );
+}
+
+/// Regression (B4 root cause at the wire level): Gerrit's Gson serialises
+/// `ChangeDetail` with `LOWER_CASE_WITH_UNDERSCORES`, so the revision pointer
+/// arrives as `current_revision`. The model declared camelCase keys and thus
+/// read `None`, which left `commit_msg` empty and the `Bugs:` line dead.
+#[tokio::test]
+async fn test_get_change_details_prints_bugs_from_current_revision() {
+    let mock_server = MockServer::start().await;
+
+    let body = r#"{
+        "id": "42",
+        "_number": 42,
+        "subject": "Extract the ticket from the current revision",
+        "status": "NEW",
+        "project": "my-project",
+        "branch": "main",
+        "owner": {"_account_id": 1000001, "name": "Jane Doe", "email": "jane@example.com"},
+        "updated": "2026-09-30 10:00:00",
+        "current_revision": "0123456789abcdef0123456789abcdef01234567",
+        "current_revision_number": 1,
+        "revisions": {
+            "0123456789abcdef0123456789abcdef01234567": {
+                "_number": 1,
+                "commit": {
+                    "message": "Extract the ticket from the current revision\n\nJIRA: PROJ-1234\n\nChange-Id: I0123456789abcdef0123456789abcdef01234567"
+                }
+            }
+        }
+    }"#;
+
+    Mock::given(method("GET"))
+        .and(path("/changes/42/detail"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(body))
+        .mount(&mock_server)
+        .await;
+
+    let client = GerritClient::new(GerritClientConfig {
+        base_url: mock_server.uri(),
+        auth: AuthMode::Bearer("token".into()),
+        timeout: Duration::from_secs(5),
+        tls: test_tls_config(),
+        disable_url_normalization: true,
+    })
+    .unwrap();
+    let tracker =
+        BugTrackerSpec::compile("jira", &["jira".to_string()], r"([A-Z][A-Z0-9]*-\d+)", None)
+            .expect("tracker pattern must compile");
+    let server = GerritServer::new(GerritService::new(client)).with_bug_trackers(vec![tracker]);
+
+    let params = GetChangeDetailsParams {
+        change_id: "42".into(),
+        gerrit_base_url: None,
+        options: None,
+    };
+    let text = extract_text(server.get_change_details(Parameters(params)).await);
+
+    assert!(
+        text.contains("Bugs: PROJ-1234"),
+        "the Bugs: line must come from revisions[current_revision].commit.message, got:\n{text}"
     );
 }
 
