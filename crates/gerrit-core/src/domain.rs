@@ -188,7 +188,10 @@ pub struct CommitParent {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
+// Gerrit's FileInfo is the one payload in this module that uses snake_case field
+// names (`lines_inserted`, `lines_deleted`), so it must not be renamed to
+// camelCase — with `#[serde(default)]` a renamed field would silently deserialize
+// as 0 instead of failing. See rest-api-changes.html#file-info.
 pub struct FileInfo {
     #[serde(default)]
     pub status: Option<String>,

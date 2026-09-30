@@ -30,9 +30,13 @@ pub async fn list_change_files<R: GerritRepository + Send + Sync + 'static>(
                     continue;
                 }
                 let status_char = match info.status.as_deref() {
+                    // Gerrit leaves `status` unset for a plain modification.
+                    None => 'M',
+                    // The five statuses Gerrit documents for FileInfo.
                     Some("A") => 'A',
                     Some("D") => 'D',
                     Some("R") => 'R',
+                    Some("C") => 'C',
                     Some("W") => 'W',
                     Some("M") => 'M',
                     _ => '?',

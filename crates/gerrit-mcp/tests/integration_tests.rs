@@ -291,10 +291,15 @@ async fn test_client_xssi_stripping_in_get_change_detail() {
 async fn test_client_list_files_parsing() {
     let server = MockServer::start().await;
 
+    // Payload shape of GET /changes/{change-id}/revisions/{revision-id}/files/ as
+    // Gerrit actually sends it (Gerrit REST API, "FileInfo" in
+    // rest-api-changes.html): snake_case keys, and no `status` for a plain
+    // modification — Gerrit sets `status` only for added/deleted/renamed/copied/
+    // rewritten files.
     let files_json = r#"{
-        "src/main.rs": {"status": "M", "linesInserted": 10, "linesDeleted": 2},
-        "src/lib.rs": {"status": "A", "linesInserted": 50, "linesDeleted": 0},
-        "/COMMIT_MSG": {"status": "M", "linesInserted": 5, "linesDeleted": 0}
+        "src/main.rs": {"lines_inserted": 10, "lines_deleted": 2},
+        "src/lib.rs": {"status": "A", "lines_inserted": 50, "lines_deleted": 0},
+        "/COMMIT_MSG": {"lines_inserted": 5, "lines_deleted": 0}
     }"#;
 
     Mock::given(method("GET"))
@@ -315,11 +320,15 @@ async fn test_client_list_files_parsing() {
     let files = client.list_files("123").await.unwrap();
 
     assert_eq!(files.len(), 3);
-    assert_eq!(files["src/main.rs"].status, Some("M".into()));
+    assert_eq!(
+        files["src/main.rs"].status, None,
+        "a modified file carries no status"
+    );
     assert_eq!(files["src/main.rs"].lines_inserted, 10);
     assert_eq!(files["src/main.rs"].lines_deleted, 2);
     assert_eq!(files["src/lib.rs"].status, Some("A".into()));
     assert_eq!(files["src/lib.rs"].lines_inserted, 50);
+    assert_eq!(files["src/lib.rs"].lines_deleted, 0);
 }
 
 #[tokio::test]
@@ -618,7 +627,9 @@ async fn test_list_files_pipeline() {
     files.insert(
         "src/main.rs".into(),
         FileInfo {
-            status: Some("M".into()),
+            // Gerrit omits `status` for a plain modification; the formatter must
+            // still report it as `[M]`.
+            status: None,
             lines_inserted: 10,
             lines_deleted: 2,
         },
@@ -629,6 +640,15 @@ async fn test_list_files_pipeline() {
             status: Some("A".into()),
             lines_inserted: 42,
             lines_deleted: 0,
+        },
+    );
+    files.insert(
+        "src/copied.rs".into(),
+        FileInfo {
+            // `C` is one of the five statuses Gerrit documents for FileInfo.
+            status: Some("C".into()),
+            lines_inserted: 7,
+            lines_deleted: 1,
         },
     );
     mock.push_list_files_result(Ok(files));
@@ -643,6 +663,7 @@ async fn test_list_files_pipeline() {
 
     assert!(text.contains("[M] src/main.rs (+10, -2)"));
     assert!(text.contains("[A] src/lib.rs (+42, -0)"));
+    assert!(text.contains("[C] src/copied.rs (+7, -1)"));
     assert!(!text.contains("/COMMIT_MSG"));
 }
 
