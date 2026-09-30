@@ -28,67 +28,67 @@ gerrit-mcp --version
 
 ### `[gerrit]` — подключение
 
-| Поле | Env var | По умолчанию | Описание |
-|---|---|---|---|
-| `base_url` | `GERRIT_URL` | `""` | **Обязательно.** Базовый URL Gerrit (например, `https://gerrit.example.com`) |
-| `timeout_secs` | — | `30` | Таймаут HTTP-запроса в секундах |
-| `ca_cert` | `GERRIT_CA_CERT` / `SSL_CERT_FILE` | — | Путь к PEM-файлу пользовательского CA |
-| `ca_cert_dir` | `SSL_CERT_DIR` | — | Директория с CA-сертификатами |
-| `verify_ssl` | `GERRIT_VERIFY_SSL=false` | `true` | Включение/отключение проверки TLS |
+| Поле           | Env var                            | По умолчанию | Описание                                                                     |
+|----------------|------------------------------------|--------------|------------------------------------------------------------------------------|
+| `base_url`     | `GERRIT_URL`                       | `""`         | **Обязательно.** Базовый URL Gerrit (например, `https://gerrit.example.com`) |
+| `timeout_secs` | —                                  | `30`         | Таймаут HTTP-запроса в секундах                                              |
+| `ca_cert`      | `GERRIT_CA_CERT` / `SSL_CERT_FILE` | —            | Путь к PEM-файлу пользовательского CA                                        |
+| `ca_cert_dir`  | `SSL_CERT_DIR`                     | —            | Директория с CA-сертификатами                                                |
+| `verify_ssl`   | `GERRIT_VERIFY_SSL=false`          | `true`       | Включение/отключение проверки TLS                                            |
 
 ### `[gerrit.auth]` — аутентификация
 
-| Поле | Описание |
-|---|---|
-| `mode` | Режим: `"http_basic"` / `"basic"`, `"bearer"` / `"token"`, `"git_cookies"` или `"none"` |
-| `username_env` | Имя переменной окружения для имени пользователя Basic Auth (например, `GERRIT_USERNAME`) |
-| `auth_token_env` | Имя переменной окружения для HTTP-пароля/токена (по умолчанию: `GERRIT_AUTH_TOKEN`) |
-| `token_env` | Имя переменной окружения для Bearer-токена (по умолчанию: `GERRIT_TOKEN`) |
-| `gitcookies_path` | Путь к файлу `.gitcookies` для аутентификации в Gerrit (формат Netscape) |
+| Поле              | Описание                                                                                 |
+|-------------------|------------------------------------------------------------------------------------------|
+| `mode`            | Режим: `"http_basic"` / `"basic"`, `"bearer"` / `"token"`, `"git_cookies"` или `"none"`  |
+| `username_env`    | Имя переменной окружения для имени пользователя Basic Auth (например, `GERRIT_USERNAME`) |
+| `auth_token_env`  | Имя переменной окружения для HTTP-пароля/токена (по умолчанию: `GERRIT_AUTH_TOKEN`)      |
+| `token_env`       | Имя переменной окружения для Bearer-токена (по умолчанию: `GERRIT_TOKEN`)                |
+| `gitcookies_path` | Путь к файлу `.gitcookies` для аутентификации в Gerrit (формат Netscape)                 |
 
 Учётные данные никогда не хранятся в файле конфигурации — только имена переменных окружения.
 
 ### `[service]` — поведение
 
-| Поле | По умолчанию | Описание |
-|---|---|---|
-| `default_max_results` | `25` | Лимит результатов по умолчанию, если клиент не указал |
-| `read_only` | `false` | Запрет всех операций записи (env: `READ_ONLY_MODE`) |
+| Поле                  | По умолчанию | Описание                                              |
+|-----------------------|--------------|-------------------------------------------------------|
+| `default_max_results` | `25`         | Лимит результатов по умолчанию, если клиент не указал |
+| `read_only`           | `false`      | Запрет всех операций записи (env: `READ_ONLY_MODE`)   |
 
 ### `[cache]` — кэш в памяти
 
-| Поле | По умолчанию | Описание |
-|---|---|---|
-| `enabled` | `false` | Включение/отключение TTL + LRU кэша |
-| `ttl_secs` | `300` | Время жизни записи в секундах |
-| `max_entries` | `1000` | Максимальное количество записей (LRU-вытеснение) |
+| Поле          | По умолчанию | Описание                                         |
+|---------------|--------------|--------------------------------------------------|
+| `enabled`     | `false`      | Включение/отключение TTL + LRU кэша              |
+| `ttl_secs`    | `300`        | Время жизни записи в секундах                    |
+| `max_entries` | `1000`       | Максимальное количество записей (LRU-вытеснение) |
 
 ### `[rate_limit]` — ограничение частоты (token bucket)
 
-| Поле | По умолчанию | Описание |
-|---|---|---|
-| `enabled` | `false` | Включение/отключение ограничения |
-| `requests_per_second` | `10` | Устойчивая частота запросов |
-| `burst` | `20` | Ёмкость всплеска |
+| Поле                  | По умолчанию | Описание                         |
+|-----------------------|--------------|----------------------------------|
+| `enabled`             | `false`      | Включение/отключение ограничения |
+| `requests_per_second` | `10`         | Устойчивая частота запросов      |
+| `burst`               | `20`         | Ёмкость всплеска                 |
 
 ### `[transport]` — режим сервера
 
-| Поле | По умолчанию | Описание |
-|---|---|---|
-| `mode` | `"both"` | `"stdio"`, `"http"` или `"both"` |
-| `bind_addr` | `"127.0.0.1:8080"` | Адрес для HTTP (используйте `0.0.0.0:8080` для сетевого доступа) |
-| `http_path` | `"/mcp"` | Путь эндпоинта MCP Streamable HTTP |
-| `health_path` | `"/healthz"` | Эндпоинт живучести |
-| `ready_path` | `"/readyz"` | Эндпоинт готовности |
-| `metrics_path` | `"/metrics"` | Эндпоинт метрик Prometheus |
-| `allowed_hosts` | — | Разрешённые значения заголовка Host (защита от DNS rebinding) |
-| `mcp_auth_token` | `""` | Опциональный Bearer-токен для аутентификации на MCP-эндпоинте (пустая строка = отключено) |
+| Поле             | По умолчанию       | Описание                                                                                  |
+|------------------|--------------------|-------------------------------------------------------------------------------------------|
+| `mode`           | `"both"`           | `"stdio"`, `"http"` или `"both"`                                                          |
+| `bind_addr`      | `"127.0.0.1:8080"` | Адрес для HTTP (используйте `0.0.0.0:8080` для сетевого доступа)                          |
+| `http_path`      | `"/mcp"`           | Путь эндпоинта MCP Streamable HTTP                                                        |
+| `health_path`    | `"/healthz"`       | Эндпоинт живучести                                                                        |
+| `ready_path`     | `"/readyz"`        | Эндпоинт готовности                                                                       |
+| `metrics_path`   | `"/metrics"`       | Эндпоинт метрик Prometheus                                                                |
+| `allowed_hosts`  | —                  | Разрешённые значения заголовка Host (защита от DNS rebinding)                             |
+| `mcp_auth_token` | `""`               | Опциональный Bearer-токен для аутентификации на MCP-эндпоинте (пустая строка = отключено) |
 
 ### `[log]`
 
-| Поле | По умолчанию | Описание |
-|---|---|---|
-| `level` | `"info"` | `trace`, `debug`, `info`, `warn`, `error` — переопределяется `RUST_LOG` |
+| Поле    | По умолчанию | Описание                                                                |
+|---------|--------------|-------------------------------------------------------------------------|
+| `level` | `"info"`     | `trace`, `debug`, `info`, `warn`, `error` — переопределяется `RUST_LOG` |
 
 ---
 
@@ -202,10 +202,10 @@ READ_ONLY_MODE=true
 
 ## Health-эндпоинты
 
-| Эндпоинт | Поведение |
-|---|---|
-| `GET /healthz` | Всегда `200 OK`, если процесс жив |
-| `GET /readyz` | `200`, когда конфигурация загружена и процесс готов; базовый сигнал готовности |
+| Эндпоинт       | Поведение                                                                             |
+|----------------|---------------------------------------------------------------------------------------|
+| `GET /healthz` | Всегда `200 OK`, если процесс жив                                                     |
+| `GET /readyz`  | `200`, когда конфигурация загружена и процесс готов; базовый сигнал готовности        |
 | `GET /metrics` | Текстовый формат Prometheus — счётчики вызовов инструментов, ошибок, запросов, uptime |
 
 ### Проверка здоровья в Docker
@@ -225,60 +225,60 @@ healthcheck:
 
 ### Запрос изменений
 
-| Инструмент | Описание | Основные параметры |
-|---|---|---|
-| `query_changes` | Поиск изменений с синтаксисом Gerrit | `query`, `limit?`, `options?` |
-| `query_changes_by_date_and_filters` | Поиск изменений в диапазоне дат с фильтрами | `start_date`, `end_date`, `project?`, `message_substring?`, `status?`, `limit?` |
-| `get_change_details` | Детальная информация об изменении (ревизии, метки, ревьюеры) | `change_id`, `options?` |
-| `get_most_recent_cl` | Последнее изменение от пользователя | `user` |
-| `changes_submitted_together` | Изменения, отправленные вместе с данным | `change_id`, `options?` |
+| Инструмент                          | Описание                                                     | Основные параметры                                                              |
+|-------------------------------------|--------------------------------------------------------------|---------------------------------------------------------------------------------|
+| `query_changes`                     | Поиск изменений с синтаксисом Gerrit                         | `query`, `limit?`, `options?`                                                   |
+| `query_changes_by_date_and_filters` | Поиск изменений в диапазоне дат с фильтрами                  | `start_date`, `end_date`, `project?`, `message_substring?`, `status?`, `limit?` |
+| `get_change_details`                | Детальная информация об изменении (ревизии, метки, ревьюеры) | `change_id`, `options?`                                                         |
+| `get_most_recent_cl`                | Последнее изменение от пользователя                          | `user`                                                                          |
+| `changes_submitted_together`        | Изменения, отправленные вместе с данным                      | `change_id`, `options?`                                                         |
 
 ### Содержимое изменений
 
-| Инструмент | Описание | Основные параметры |
-|---|---|---|
-| `get_commit_message` | Дословное сообщение коммита для изменения (`GET /changes/{id}/message`; на Gerrit < 3.10 — фолбэк на revision commit endpoint) | `change_id` |
-| `get_revision_commit` | Полный объект коммита ревизии | `change_id`, `revision_id?` |
-| `get_related_changes` | Изменения, связанные с ревизией (цепочка зависимостей) | `change_id`, `revision_id?` |
-| `get_git_parent_changes` | Родительские изменения (`parentof:`-запрос) | `change_id`, `limit?` |
-| `list_change_files` | Список изменённых файлов | `change_id` |
-| `get_file_diff` | Diff для файла в изменении | `change_id`, `file_path` |
-| `list_change_comments` | Опубликованные комментарии | `change_id` |
-| `list_draft_comments` | Черновики комментариев | `change_id` |
-| `get_bugs_from_cl` | Извлечение ссылок на баги из изменения | `change_id` |
+| Инструмент               | Описание                                                                                                                       | Основные параметры          |
+|--------------------------|--------------------------------------------------------------------------------------------------------------------------------|-----------------------------|
+| `get_commit_message`     | Дословное сообщение коммита для изменения (`GET /changes/{id}/message`; на Gerrit < 3.10 — фолбэк на revision commit endpoint) | `change_id`                 |
+| `get_revision_commit`    | Полный объект коммита ревизии                                                                                                  | `change_id`, `revision_id?` |
+| `get_related_changes`    | Изменения, связанные с ревизией (цепочка зависимостей)                                                                         | `change_id`, `revision_id?` |
+| `get_git_parent_changes` | Родительские изменения (`parentof:`-запрос)                                                                                    | `change_id`, `limit?`       |
+| `list_change_files`      | Список изменённых файлов                                                                                                       | `change_id`                 |
+| `get_file_diff`          | Diff для файла в изменении                                                                                                     | `change_id`, `file_path`    |
+| `list_change_comments`   | Опубликованные комментарии                                                                                                     | `change_id`                 |
+| `list_draft_comments`    | Черновики комментариев                                                                                                         | `change_id`                 |
+| `get_bugs_from_cl`       | Извлечение ссылок на баги из изменения                                                                                         | `change_id`                 |
 
 ### Жизненный цикл изменений
 
-| Инструмент | Описание | Основные параметры |
-|---|---|---|
-| `create_change` | Создать новое изменение | `project`, `branch`, `subject`, `topic?`, `status?` |
-| `set_ready_for_review` | Пометить как готовое к ревью | `change_id` |
-| `set_work_in_progress` | Пометить как work-in-progress | `change_id`, `message?` |
-| `set_topic` | Установить тему изменения; пустой `topic` удаляет её | `change_id`, `topic` |
-| `abandon_change` | Отказаться от изменения | `change_id`, `message?` |
-| `revert_change` | Откатить принятое изменение | `change_id`, `message?` |
-| `revert_submission` | Откатить отправку | `change_id`, `message?` |
-| `submit_change` | Отправить изменение на слияние | `change_id`, `wait_for_merge?` |
+| Инструмент             | Описание                                             | Основные параметры                                  |
+|------------------------|------------------------------------------------------|-----------------------------------------------------|
+| `create_change`        | Создать новое изменение                              | `project`, `branch`, `subject`, `topic?`, `status?` |
+| `set_ready_for_review` | Пометить как готовое к ревью                         | `change_id`                                         |
+| `set_work_in_progress` | Пометить как work-in-progress                        | `change_id`, `message?`                             |
+| `set_topic`            | Установить тему изменения; пустой `topic` удаляет её | `change_id`, `topic`                                |
+| `abandon_change`       | Отказаться от изменения                              | `change_id`, `message?`                             |
+| `revert_change`        | Откатить принятое изменение                          | `change_id`, `message?`                             |
+| `revert_submission`    | Откатить отправку                                    | `change_id`, `message?`                             |
+| `submit_change`        | Отправить изменение на слияние                       | `change_id`, `wait_for_merge?`                      |
 
 ### Code review
 
-| Инструмент | Описание | Основные параметры |
-|---|---|---|
-| `add_reviewer` | Добавить ревьюера | `change_id`, `reviewer`, `state?`, `confirmed?` |
-| `suggest_reviewers` | Предложения ревьюеров | `change_id`, `query`, `limit?`, `exclude_groups?` |
-| `set_labels` | Установить голоса меток на изменение | `change_id`, `labels`, `message?`, `gerrit_base_url?` |
-| `post_review_comment` | Опубликовать комментарий ревью | `change_id`, `file_path`, `line_number`, `message`, `unresolved?`, `labels?` |
-| `post_draft_comment` | Опубликовать черновик (диапазон, unresolved, встроенный suggestion) | `change_id`, `file_path`, `line_number`, `message`, `unresolved?`, `suggestion?`, `in_reply_to?`, `start_line?`, `start_character?`, `end_line?`, `end_character?` |
-| `delete_draft_comment` | Удалить конкретный черновик | `change_id`, `draft_id` |
-| `delete_draft_comments` | Удалить все черновики изменения | `change_id` |
-| `publish_drafts` | Опубликовать черновики (отправляет `drafts=PUBLISH_ALL_REVISIONS`) | `change_id`, `message?`, `labels?` |
+| Инструмент              | Описание                                                            | Основные параметры                                                                                                                                                 |
+|-------------------------|---------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `add_reviewer`          | Добавить ревьюера                                                   | `change_id`, `reviewer`, `state?`, `confirmed?`                                                                                                                    |
+| `suggest_reviewers`     | Предложения ревьюеров                                               | `change_id`, `query`, `limit?`, `exclude_groups?`                                                                                                                  |
+| `set_labels`            | Установить голоса меток на изменение                                | `change_id`, `labels`, `message?`, `gerrit_base_url?`                                                                                                              |
+| `post_review_comment`   | Опубликовать комментарий ревью                                      | `change_id`, `file_path`, `line_number`, `message`, `unresolved?`, `labels?`                                                                                       |
+| `post_draft_comment`    | Опубликовать черновик (диапазон, unresolved, встроенный suggestion) | `change_id`, `file_path`, `line_number`, `message`, `unresolved?`, `suggestion?`, `in_reply_to?`, `start_line?`, `start_character?`, `end_line?`, `end_character?` |
+| `delete_draft_comment`  | Удалить конкретный черновик                                         | `change_id`, `draft_id`                                                                                                                                            |
+| `delete_draft_comments` | Удалить все черновики изменения                                     | `change_id`                                                                                                                                                        |
+| `publish_drafts`        | Опубликовать черновики (отправляет `drafts=PUBLISH_ALL_REVISIONS`)  | `change_id`, `message?`, `labels?`                                                                                                                                 |
 
 ### Cherry-pick
 
-| Инструмент | Описание | Основные параметры |
-|---|---|---|
+| Инструмент           | Описание                           | Основные параметры                                                                                            |
+|----------------------|------------------------------------|---------------------------------------------------------------------------------------------------------------|
 | `cherry_pick_change` | Перенести изменение в другую ветку | `change_id`, `destination`, `revision_id?`, `message?`, `keep_reviewers?`, `allow_conflicts?`, `allow_empty?` |
-| `cherry_pick_chain` | Перенести цепочку изменений | `change_id`, `destination`, `revision_id?`, `keep_reviewers?`, `allow_conflicts?`, `allow_empty?` |
+| `cherry_pick_chain`  | Перенести цепочку изменений        | `change_id`, `destination`, `revision_id?`, `keep_reviewers?`, `allow_conflicts?`, `allow_empty?`             |
 
 ### Формат результатов
 

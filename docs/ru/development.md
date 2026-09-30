@@ -25,7 +25,7 @@ git checkout -b feat/моя-фича
 ## Запуск тестов
 
 ```bash
-# Все тесты (407). Используйте --test-threads=1 во избежание гонок env-переменных
+# Все тесты (420). Используйте --test-threads=1 во избежание гонок env-переменных
 cargo test --workspace -- --test-threads=1
 
 # Отдельный крейт
@@ -155,13 +155,13 @@ cargo build --workspace --release
 
 Релизы автоматизированы через `.github/workflows/release.yml`:
 
-1. Отправьте тег, например `v1.4.0`
+1. Отправьте тег, например `v1.4.1`
 2. CI собирает мультиархитектурные Docker-образы и создаёт GitHub Release
 3. Бинарные артефакты прикрепляются к релизу
 
 Ручные шаги (для отладки workflow):
 
 ```bash
-docker build -t gerrit-mcp:v1.4.0 .
-docker tag gerrit-mcp:v1.4.0 gerrit-mcp:latest
+docker build -t gerrit-mcp:v1.4.1 .
+docker tag gerrit-mcp:v1.4.1 gerrit-mcp:latest
 ```
