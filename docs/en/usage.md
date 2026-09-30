@@ -27,66 +27,66 @@ the annotated template. Environment variables override specific fields (listed b
 
 ### `[gerrit]` — connection
 
-| Field | Env var | Default | Description |
-|---|---|---|---|
-| `base_url` | `GERRIT_URL` | `""` | **Required.** Gerrit base URL (e.g. `https://gerrit.example.com`) |
-| `timeout_secs` | — | `30` | HTTP request timeout in seconds |
-| `ca_cert` | `GERRIT_CA_CERT` / `SSL_CERT_FILE` | — | Custom CA PEM path |
-| `ca_cert_dir` | `SSL_CERT_DIR` | — | Directory of CA certs |
-| `verify_ssl` | `GERRIT_VERIFY_SSL=false` | `true` | Enable/disable TLS verification |
+| Field          | Env var                            | Default | Description                                                       |
+|----------------|------------------------------------|---------|-------------------------------------------------------------------|
+| `base_url`     | `GERRIT_URL`                       | `""`    | **Required.** Gerrit base URL (e.g. `https://gerrit.example.com`) |
+| `timeout_secs` | —                                  | `30`    | HTTP request timeout in seconds                                   |
+| `ca_cert`      | `GERRIT_CA_CERT` / `SSL_CERT_FILE` | —       | Custom CA PEM path                                                |
+| `ca_cert_dir`  | `SSL_CERT_DIR`                     | —       | Directory of CA certs                                             |
+| `verify_ssl`   | `GERRIT_VERIFY_SSL=false`          | `true`  | Enable/disable TLS verification                                   |
 
 ### `[gerrit.auth]` — authentication
 
-| Field | Description |
-|---|---|
-| `mode` | Auth mode: `"http_basic"` / `"basic"`, `"bearer"` / `"token"`, `"git_cookies"`, or `"none"` |
-| `username_env` | Env var name for Basic auth username (e.g. `GERRIT_USERNAME`) |
-| `auth_token_env` | Env var name for HTTP auth token/password (default: `GERRIT_AUTH_TOKEN`) |
-| `token_env` | Env var name for the Bearer token (default: `GERRIT_TOKEN`) |
-| `gitcookies_path` | Path to a `.gitcookies` file for Gerrit auth (Netscape format) |
+| Field             | Description                                                                                 |
+|-------------------|---------------------------------------------------------------------------------------------|
+| `mode`            | Auth mode: `"http_basic"` / `"basic"`, `"bearer"` / `"token"`, `"git_cookies"`, or `"none"` |
+| `username_env`    | Env var name for Basic auth username (e.g. `GERRIT_USERNAME`)                               |
+| `auth_token_env`  | Env var name for HTTP auth token/password (default: `GERRIT_AUTH_TOKEN`)                    |
+| `token_env`       | Env var name for the Bearer token (default: `GERRIT_TOKEN`)                                 |
+| `gitcookies_path` | Path to a `.gitcookies` file for Gerrit auth (Netscape format)                              |
 
 Credentials are never stored in the config file — only the env var names.
 
 ### `[service]` — behaviour
 
-| Field | Default | Description |
-|---|---|---|
-| `default_max_results` | `25` | Default result limit when client doesn't specify |
-| `read_only` | `false` | Disable all write operations (env: `READ_ONLY_MODE`) |
+| Field                 | Default | Description                                          |
+|-----------------------|---------|------------------------------------------------------|
+| `default_max_results` | `25`    | Default result limit when client doesn't specify     |
+| `read_only`           | `false` | Disable all write operations (env: `READ_ONLY_MODE`) |
 
 ### `[cache]` — in-memory cache
 
-| Field | Default | Description |
-|---|---|---|
-| `enabled` | `false` | Enable/disable TTL + LRU cache |
-| `ttl_secs` | `300` | Entry lifetime in seconds |
-| `max_entries` | `1000` | Max cached responses (LRU eviction) |
+| Field         | Default | Description                         |
+|---------------|---------|-------------------------------------|
+| `enabled`     | `false` | Enable/disable TTL + LRU cache      |
+| `ttl_secs`    | `300`   | Entry lifetime in seconds           |
+| `max_entries` | `1000`  | Max cached responses (LRU eviction) |
 
 ### `[rate_limit]` — token bucket
 
-| Field | Default | Description |
-|---|---|---|
-| `enabled` | `false` | Enable/disable rate limiting |
-| `requests_per_second` | `10` | Sustained request rate |
-| `burst` | `20` | Burst capacity |
+| Field                 | Default | Description                  |
+|-----------------------|---------|------------------------------|
+| `enabled`             | `false` | Enable/disable rate limiting |
+| `requests_per_second` | `10`    | Sustained request rate       |
+| `burst`               | `20`    | Burst capacity               |
 
 ### `[transport]` — server mode
 
-| Field | Default | Description |
-|---|---|---|
-| `mode` | `"both"` | `"stdio"`, `"http"`, or `"both"` |
-| `bind_addr` | `"127.0.0.1:8080"` | HTTP bind address (use `0.0.0.0:8080` for network access) |
-| `http_path` | `"/mcp"` | MCP Streamable HTTP endpoint path |
-| `health_path` | `"/healthz"` | Liveness endpoint |
-| `ready_path` | `"/readyz"` | Readiness endpoint |
-| `metrics_path` | `"/metrics"` | Prometheus metrics endpoint |
-| `allowed_hosts` | — | Allowed Host header values (DNS rebinding protection) |
-| `mcp_auth_token` | `""` | Optional Bearer token for MCP endpoint auth (empty = disabled) |
+| Field            | Default            | Description                                                    |
+|------------------|--------------------|----------------------------------------------------------------|
+| `mode`           | `"both"`           | `"stdio"`, `"http"`, or `"both"`                               |
+| `bind_addr`      | `"127.0.0.1:8080"` | HTTP bind address (use `0.0.0.0:8080` for network access)      |
+| `http_path`      | `"/mcp"`           | MCP Streamable HTTP endpoint path                              |
+| `health_path`    | `"/healthz"`       | Liveness endpoint                                              |
+| `ready_path`     | `"/readyz"`        | Readiness endpoint                                             |
+| `metrics_path`   | `"/metrics"`       | Prometheus metrics endpoint                                    |
+| `allowed_hosts`  | —                  | Allowed Host header values (DNS rebinding protection)          |
+| `mcp_auth_token` | `""`               | Optional Bearer token for MCP endpoint auth (empty = disabled) |
 
 ### `[log]`
 
-| Field | Default | Description |
-|---|---|---|
+| Field   | Default  | Description                                                          |
+|---------|----------|----------------------------------------------------------------------|
 | `level` | `"info"` | `trace`, `debug`, `info`, `warn`, `error` — overridden by `RUST_LOG` |
 
 ---
@@ -200,11 +200,11 @@ should only be permitted to read Gerrit data.
 
 ## Health endpoints
 
-| Endpoint | Behaviour |
-|---|---|
-| `GET /healthz` | Always `200 OK` if the process is alive |
-| `GET /readyz` | `200` when config is loaded and process is ready; serves as a basic readiness signal |
-| `GET /metrics` | Prometheus text format — tool call counters, errors, queries, uptime |
+| Endpoint       | Behaviour                                                                            |
+|----------------|--------------------------------------------------------------------------------------|
+| `GET /healthz` | Always `200 OK` if the process is alive                                              |
+| `GET /readyz`  | `200` when config is loaded and process is ready; serves as a basic readiness signal |
+| `GET /metrics` | Prometheus text format — tool call counters, errors, queries, uptime                 |
 
 ### Docker health check
 
@@ -223,60 +223,60 @@ The server exposes **32 tools** covering the full Gerrit REST API.
 
 ### Querying changes
 
-| Tool | Description | Key parameters |
-|---|---|---|
-| `query_changes` | Search changes with Gerrit query syntax | `query`, `limit?`, `options?` |
-| `query_changes_by_date_and_filters` | Query changes in a date range with filters | `start_date`, `end_date`, `project?`, `message_substring?`, `status?`, `limit?` |
-| `get_change_details` | Get detailed change info (revisions, labels, reviewers) | `change_id`, `options?` |
-| `get_most_recent_cl` | Get the most recent change from a user | `user` |
-| `changes_submitted_together` | List changes submitted together with this one | `change_id`, `options?` |
+| Tool                                | Description                                             | Key parameters                                                                  |
+|-------------------------------------|---------------------------------------------------------|---------------------------------------------------------------------------------|
+| `query_changes`                     | Search changes with Gerrit query syntax                 | `query`, `limit?`, `options?`                                                   |
+| `query_changes_by_date_and_filters` | Query changes in a date range with filters              | `start_date`, `end_date`, `project?`, `message_substring?`, `status?`, `limit?` |
+| `get_change_details`                | Get detailed change info (revisions, labels, reviewers) | `change_id`, `options?`                                                         |
+| `get_most_recent_cl`                | Get the most recent change from a user                  | `user`                                                                          |
+| `changes_submitted_together`        | List changes submitted together with this one           | `change_id`, `options?`                                                         |
 
 ### Change content
 
-| Tool | Description | Key parameters |
-|---|---|---|
-| `get_commit_message` | Get verbatim commit message for a change (`GET /changes/{id}/message`; falls back to the revision commit endpoint on Gerrit < 3.10) | `change_id` |
-| `get_revision_commit` | Get the full commit object of a revision | `change_id`, `revision_id?` |
-| `get_related_changes` | Get changes related to a revision (relation chain) | `change_id`, `revision_id?` |
-| `get_git_parent_changes` | Get parent changes of a change (`parentof:` query) | `change_id`, `limit?` |
-| `list_change_files` | List files modified in a change | `change_id` |
-| `get_file_diff` | Get the diff for a file in a change | `change_id`, `file_path` |
-| `list_change_comments` | List published comments on a change | `change_id` |
-| `list_draft_comments` | List draft comments on a change | `change_id` |
-| `get_bugs_from_cl` | Extract bug references from a change | `change_id` |
+| Tool                     | Description                                                                                                                         | Key parameters              |
+|--------------------------|-------------------------------------------------------------------------------------------------------------------------------------|-----------------------------|
+| `get_commit_message`     | Get verbatim commit message for a change (`GET /changes/{id}/message`; falls back to the revision commit endpoint on Gerrit < 3.10) | `change_id`                 |
+| `get_revision_commit`    | Get the full commit object of a revision                                                                                            | `change_id`, `revision_id?` |
+| `get_related_changes`    | Get changes related to a revision (relation chain)                                                                                  | `change_id`, `revision_id?` |
+| `get_git_parent_changes` | Get parent changes of a change (`parentof:` query)                                                                                  | `change_id`, `limit?`       |
+| `list_change_files`      | List files modified in a change                                                                                                     | `change_id`                 |
+| `get_file_diff`          | Get the diff for a file in a change                                                                                                 | `change_id`, `file_path`    |
+| `list_change_comments`   | List published comments on a change                                                                                                 | `change_id`                 |
+| `list_draft_comments`    | List draft comments on a change                                                                                                     | `change_id`                 |
+| `get_bugs_from_cl`       | Extract bug references from a change                                                                                                | `change_id`                 |
 
 ### Change lifecycle
 
-| Tool | Description | Key parameters |
-|---|---|---|
-| `create_change` | Create a new change | `project`, `branch`, `subject`, `topic?`, `status?` |
-| `set_ready_for_review` | Mark a change as ready for review | `change_id` |
-| `set_work_in_progress` | Mark a change as work-in-progress | `change_id`, `message?` |
-| `set_topic` | Set the topic for a change; empty `topic` deletes it | `change_id`, `topic` |
-| `abandon_change` | Abandon a change | `change_id`, `message?` |
-| `revert_change` | Revert a merged change | `change_id`, `message?` |
-| `revert_submission` | Revert a submission | `change_id`, `message?` |
-| `submit_change` | Submit a change for merge | `change_id`, `wait_for_merge?` |
+| Tool                   | Description                                          | Key parameters                                      |
+|------------------------|------------------------------------------------------|-----------------------------------------------------|
+| `create_change`        | Create a new change                                  | `project`, `branch`, `subject`, `topic?`, `status?` |
+| `set_ready_for_review` | Mark a change as ready for review                    | `change_id`                                         |
+| `set_work_in_progress` | Mark a change as work-in-progress                    | `change_id`, `message?`                             |
+| `set_topic`            | Set the topic for a change; empty `topic` deletes it | `change_id`, `topic`                                |
+| `abandon_change`       | Abandon a change                                     | `change_id`, `message?`                             |
+| `revert_change`        | Revert a merged change                               | `change_id`, `message?`                             |
+| `revert_submission`    | Revert a submission                                  | `change_id`, `message?`                             |
+| `submit_change`        | Submit a change for merge                            | `change_id`, `wait_for_merge?`                      |
 
 ### Code review
 
-| Tool | Description | Key parameters |
-|---|---|---|
-| `add_reviewer` | Add a reviewer to a change | `change_id`, `reviewer`, `state?`, `confirmed?` |
-| `suggest_reviewers` | Get reviewer suggestions | `change_id`, `query`, `limit?`, `exclude_groups?` |
-| `set_labels` | Set one or more label votes on a change | `change_id`, `labels`, `message?`, `gerrit_base_url?` |
-| `post_review_comment` | Post a review comment | `change_id`, `file_path`, `line_number`, `message`, `unresolved?`, `labels?` |
-| `post_draft_comment` | Post a draft comment (range, unresolved, inline suggestion) | `change_id`, `file_path`, `line_number`, `message`, `unresolved?`, `suggestion?`, `in_reply_to?`, `start_line?`, `start_character?`, `end_line?`, `end_character?` |
-| `delete_draft_comment` | Delete a specific draft | `change_id`, `draft_id` |
-| `delete_draft_comments` | Delete all drafts on a change | `change_id` |
-| `publish_drafts` | Publish draft comments (sends `drafts=PUBLISH_ALL_REVISIONS`) | `change_id`, `message?`, `labels?` |
+| Tool                    | Description                                                   | Key parameters                                                                                                                                                     |
+|-------------------------|---------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `add_reviewer`          | Add a reviewer to a change                                    | `change_id`, `reviewer`, `state?`, `confirmed?`                                                                                                                    |
+| `suggest_reviewers`     | Get reviewer suggestions                                      | `change_id`, `query`, `limit?`, `exclude_groups?`                                                                                                                  |
+| `set_labels`            | Set one or more label votes on a change                       | `change_id`, `labels`, `message?`, `gerrit_base_url?`                                                                                                              |
+| `post_review_comment`   | Post a review comment                                         | `change_id`, `file_path`, `line_number`, `message`, `unresolved?`, `labels?`                                                                                       |
+| `post_draft_comment`    | Post a draft comment (range, unresolved, inline suggestion)   | `change_id`, `file_path`, `line_number`, `message`, `unresolved?`, `suggestion?`, `in_reply_to?`, `start_line?`, `start_character?`, `end_line?`, `end_character?` |
+| `delete_draft_comment`  | Delete a specific draft                                       | `change_id`, `draft_id`                                                                                                                                            |
+| `delete_draft_comments` | Delete all drafts on a change                                 | `change_id`                                                                                                                                                        |
+| `publish_drafts`        | Publish draft comments (sends `drafts=PUBLISH_ALL_REVISIONS`) | `change_id`, `message?`, `labels?`                                                                                                                                 |
 
 ### Cherry-pick
 
-| Tool | Description | Key parameters |
-|---|---|---|
+| Tool                 | Description                         | Key parameters                                                                                                |
+|----------------------|-------------------------------------|---------------------------------------------------------------------------------------------------------------|
 | `cherry_pick_change` | Cherry-pick to a destination branch | `change_id`, `destination`, `revision_id?`, `message?`, `keep_reviewers?`, `allow_conflicts?`, `allow_empty?` |
-| `cherry_pick_chain` | Cherry-pick a chain of changes | `change_id`, `destination`, `revision_id?`, `keep_reviewers?`, `allow_conflicts?`, `allow_empty?` |
+| `cherry_pick_chain`  | Cherry-pick a chain of changes      | `change_id`, `destination`, `revision_id?`, `keep_reviewers?`, `allow_conflicts?`, `allow_empty?`             |
 
 ### Result format
 

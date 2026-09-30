@@ -4,7 +4,33 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to
 follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.4.1] — 2026-09-30
+
+### Changed
+
+- **`rmcp` 3.4.1 → 3.5.0** — lockfile-only bump; no source changes were needed
+  (unlike 3.2.0 → 3.4.0, which required `ServerInfo` → `ServerConfig`).
+- **Transitive dependency refresh** — 18 packages updated within their existing
+  requirements: `hyper-util` 0.1.21, `tokio-rustls` 0.26.6,
+  `rustls-platform-verifier` 0.7.1, `quinn-proto`/`quinn-udp`, `cc` 1.5.1,
+  `smallvec` 1.16.2, `zerocopy` 0.8.59 and the wasm-only
+  `js-sys`/`wasm-bindgen*`/`web-sys` set.
+- **`lru` requirement tightened to `0.18`** — the previous `"0"` also allowed
+  breaking 0.x minor bumps while the code targets the 0.18 API; no resolution
+  change.
+- **Docker base image `rust:1.98.0-alpine3.24` → `rust:1.98.1-alpine3.24`** —
+  aligned with the toolchain used for local builds and CI. MSRV is unchanged at
+  Rust 1.98.
+- `matchit` stays at 0.8.4 (pinned by `axum 0.8.x`); the constraint is now
+  documented in the workspace manifest.
+
+### Removed
+
+- **`rustls-pemfile`** — unmaintained (RUSTSEC-2025-0134, repository archived in
+  August 2025). PEM parsing now uses `CertificateDer::pem_slice_iter()` from
+  `rustls-pki-types`, which `rustls 0.23` already re-exports, so no new
+  dependency was added and certificate loading behaves identically. A scan of
+  the 27 direct dependencies against OSV reports **no advisories**.
 
 ### Fixed
 

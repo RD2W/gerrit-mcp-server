@@ -88,32 +88,32 @@ other contexts.
 
 ### `gerrit-core` — domain & infrastructure
 
-| Module | Purpose |
-|---|---|
-| `domain.rs` | Data types: `Change`, `ChangeDetail`, `RevisionInfo`, `Comment`, etc. `GerritRepository` trait (25 async methods) covering all Gerrit API operations |
-| `domain/error.rs` | `DomainError` enum with variants: `HttpStatus`, `Network`, `Decode`, `Tls`, `Auth`, `Cache`, `RateLimit`, `NotImplemented` |
-| `domain/mock.rs` | `MockGerritRepository` — full in-memory mock for linearised testing |
-| `application.rs` | `GerritService<R>` — decorator over any `GerritRepository`. Applies optional `MemoryCache` (TTL + LRU) and `TokenBucket` rate limiting. Implements `GerritRepository` trait |
-| `infrastructure/client.rs` | `GerritClient` — `reqwest`-based implementation of `GerritRepository`. Handles XSSI prefix stripping, percent-encoding, JSON decoding, HTTP error mapping |
-| `infrastructure/auth.rs` | `AuthMode` enum (`HttpBasic`, `Bearer`, `GitCookies`). `parse_gitcookies()` for Netscape-format cookies. URL normalisation (forces HTTPS, appends `/a` for HTTP Basic and GitCookies). `AuthManager` for per-host auth lookup |
-| `infrastructure/tls.rs` | `TlsConfig` + `build_tls_connector()`. System trust store via `rustls-native-certs`, custom CA file/dir via `rustls-pemfile`, `NoVerifier` for disabled verification |
-| `infrastructure/cache.rs` | `MemoryCache<K,V>` — TTL + LRU using `lru::LruCache` + `Mutex`. Thread-safe, lazy expiry on access |
-| `infrastructure/rate_limit.rs` | `TokenBucket` — wraps `governor::RateLimiter` with GCRA algorithm. Blocking `acquire()` and non-blocking `check()` |
+| Module                         | Purpose                                                                                                                                                                                                                       |
+|--------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `domain.rs`                    | Data types: `Change`, `ChangeDetail`, `RevisionInfo`, `Comment`, etc. `GerritRepository` trait (25 async methods) covering all Gerrit API operations                                                                          |
+| `domain/error.rs`              | `DomainError` enum with variants: `HttpStatus`, `Network`, `Decode`, `Tls`, `Auth`, `Cache`, `RateLimit`, `NotImplemented`                                                                                                    |
+| `domain/mock.rs`               | `MockGerritRepository` — full in-memory mock for linearised testing                                                                                                                                                           |
+| `application.rs`               | `GerritService<R>` — decorator over any `GerritRepository`. Applies optional `MemoryCache` (TTL + LRU) and `TokenBucket` rate limiting. Implements `GerritRepository` trait                                                   |
+| `infrastructure/client.rs`     | `GerritClient` — `reqwest`-based implementation of `GerritRepository`. Handles XSSI prefix stripping, percent-encoding, JSON decoding, HTTP error mapping                                                                     |
+| `infrastructure/auth.rs`       | `AuthMode` enum (`HttpBasic`, `Bearer`, `GitCookies`). `parse_gitcookies()` for Netscape-format cookies. URL normalisation (forces HTTPS, appends `/a` for HTTP Basic and GitCookies). `AuthManager` for per-host auth lookup |
+| `infrastructure/tls.rs`        | `TlsConfig` + `build_tls_connector()`. System trust store via `rustls-native-certs`, custom CA file/dir via `rustls-pemfile`, `NoVerifier` for disabled verification                                                          |
+| `infrastructure/cache.rs`      | `MemoryCache<K,V>` — TTL + LRU using `lru::LruCache` + `Mutex`. Thread-safe, lazy expiry on access                                                                                                                            |
+| `infrastructure/rate_limit.rs` | `TokenBucket` — wraps `governor::RateLimiter` with GCRA algorithm. Blocking `acquire()` and non-blocking `check()`                                                                                                            |
 
 ### `gerrit-mcp` — MCP server
 
-| Module | Purpose |
-|---|---|
-| `mcp/mod.rs` | `GerritServer<R>` — MCP server holding an `Arc<R>` repository. 32 `#[tool]`-annotated methods. Dynamic client resolution for multi-instance Gerrit (via `gerrit_base_url` param). Helpers: `extract_bugs()`, `sort_by_date()`, `merge_options()` |
-| `mcp/tools.rs` | Parameter types with JSON Schema (schemars) for all 32 tools |
-| `mcp/changes.rs` | Tool implementations for change lifecycle: query, create, set ready/WIP/topic, abandon, revert, submit |
-| `mcp/reviews.rs` | Tool implementations for reviews and cherry-picks: list files, get diff, suggest/add reviewer, cherry-pick single/chain |
-| `mcp/comments.rs` | Tool implementations for comments: list, post, delete drafts, publish |
-| `config.rs` | `Config` struct + sub-sections. TOML parsing, env var overrides, validation. `ConfigError` enum |
-| `transport/http.rs` | Axum router with rmcp `StreamableHttpService`. `NeverSessionManager` for stateless MCP 2026-07-28. Optional `mcp_auth_token` middleware (constant-time comparison). DNS rebinding protection via `allowed_hosts` |
-| `transport/stdio.rs` | stdin/stdout transport via rmcp |
-| `health.rs` | Global `Metrics` singleton with atomic counters. Handlers for `/healthz`, `/readyz`, `/metrics` (Prometheus format) |
-| `main.rs` | Entry point: CLI parsing, config init, transport selection, shutdown signal handling |
+| Module               | Purpose                                                                                                                                                                                                                                          |
+|----------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `mcp/mod.rs`         | `GerritServer<R>` — MCP server holding an `Arc<R>` repository. 32 `#[tool]`-annotated methods. Dynamic client resolution for multi-instance Gerrit (via `gerrit_base_url` param). Helpers: `extract_bugs()`, `sort_by_date()`, `merge_options()` |
+| `mcp/tools.rs`       | Parameter types with JSON Schema (schemars) for all 32 tools                                                                                                                                                                                     |
+| `mcp/changes.rs`     | Tool implementations for change lifecycle: query, create, set ready/WIP/topic, abandon, revert, submit                                                                                                                                           |
+| `mcp/reviews.rs`     | Tool implementations for reviews and cherry-picks: list files, get diff, suggest/add reviewer, cherry-pick single/chain                                                                                                                          |
+| `mcp/comments.rs`    | Tool implementations for comments: list, post, delete drafts, publish                                                                                                                                                                            |
+| `config.rs`          | `Config` struct + sub-sections. TOML parsing, env var overrides, validation. `ConfigError` enum                                                                                                                                                  |
+| `transport/http.rs`  | Axum router with rmcp `StreamableHttpService`. `NeverSessionManager` for stateless MCP 2026-07-28. Optional `mcp_auth_token` middleware (constant-time comparison). DNS rebinding protection via `allowed_hosts`                                 |
+| `transport/stdio.rs` | stdin/stdout transport via rmcp                                                                                                                                                                                                                  |
+| `health.rs`          | Global `Metrics` singleton with atomic counters. Handlers for `/healthz`, `/readyz`, `/metrics` (Prometheus format)                                                                                                                              |
+| `main.rs`            | Entry point: CLI parsing, config init, transport selection, shutdown signal handling                                                                                                                                                             |
 
 ---
 
