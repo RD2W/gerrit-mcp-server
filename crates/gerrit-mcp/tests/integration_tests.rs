@@ -599,6 +599,211 @@ async fn test_get_change_detail_pipeline() {
     assert!(text.contains("Bugs: 42"));
 }
 
+/// Run the `get_change_details` tool against a wiremock Gerrit that answers the
+/// detail endpoint with `body`, and return the tool's text output.
+async fn get_change_details_against_mock(mock_server: &MockServer, body: &str) -> String {
+    Mock::given(method("GET"))
+        .and(path("/changes/42/detail"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(body))
+        .mount(mock_server)
+        .await;
+
+    let client = GerritClient::new(GerritClientConfig {
+        base_url: mock_server.uri(),
+        auth: AuthMode::Bearer("token".into()),
+        timeout: Duration::from_secs(5),
+        tls: test_tls_config(),
+        disable_url_normalization: true,
+    })
+    .unwrap();
+    let server = GerritServer::new(GerritService::new(client));
+
+    let params = GetChangeDetailsParams {
+        change_id: "42".into(),
+        gerrit_base_url: None,
+        options: None,
+    };
+    extract_text(server.get_change_details(Parameters(params)).await)
+}
+
+/// Regression (B2 root cause at the wire level): the tool requested
+/// `DETAILED_LABELS` but never `DETAILED_ACCOUNTS`, so Gerrit was free to answer
+/// `labels[*].all` with bare `_account_id`s and the output showed
+/// `by account 1000002`. The mock only answers when the option is present.
+#[tokio::test]
+async fn test_get_change_details_requests_detailed_accounts() {
+    let mock_server = MockServer::start().await;
+
+    let body = r#"{
+        "id": "42",
+        "_number": 42,
+        "subject": "Resolve voter accounts",
+        "status": "NEW",
+        "project": "my-project",
+        "branch": "main",
+        "owner": {"_account_id": 1000001, "name": "Jane Doe", "email": "jane@example.com"},
+        "updated": "2026-09-30 10:00:00",
+        "labels": {
+            "Code-Review": {
+                "all": [
+                    {"_account_id": 1000002, "name": "Bob Reviewer", "email": "bob@example.com", "value": 1}
+                ]
+            }
+        }
+    }"#;
+
+    Mock::given(method("GET"))
+        .and(path("/changes/42/detail"))
+        .and(query_param("o", "DETAILED_ACCOUNTS"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(body))
+        .mount(&mock_server)
+        .await;
+
+    let client = GerritClient::new(GerritClientConfig {
+        base_url: mock_server.uri(),
+        auth: AuthMode::Bearer("token".into()),
+        timeout: Duration::from_secs(5),
+        tls: test_tls_config(),
+        disable_url_normalization: true,
+    })
+    .unwrap();
+    let server = GerritServer::new(GerritService::new(client));
+
+    let params = GetChangeDetailsParams {
+        change_id: "42".into(),
+        gerrit_base_url: None,
+        options: None,
+    };
+    let text = extract_text(server.get_change_details(Parameters(params)).await);
+
+    assert!(
+        text.contains("Resolve voter accounts"),
+        "this mock answers only when the request carries o=DETAILED_ACCOUNTS, got:\n{text}"
+    );
+    assert!(
+        text.contains("Vote Code-Review: 1 (by Bob Reviewer <bob@example.com>)"),
+        "expected the resolved voter name and email, got:\n{text}"
+    );
+}
+
+/// Regression (B1): with `DETAILED_LABELS` Gerrit puts an entry into
+/// `labels[*].all` for *every* account allowed to vote, marking non-voters with
+/// `value: 0` — Gerrit documents `value` as "present and zero" meaning "may vote
+/// but has not". The formatter printed every such entry, which produced roughly
+/// 110 lines of `Vote Code-Review: 0 (by account ...)` on the reported change.
+#[tokio::test]
+async fn test_get_change_details_prints_only_real_votes() {
+    let mock_server = MockServer::start().await;
+
+    let body = r#"{
+        "id": "42",
+        "_number": 42,
+        "subject": "Only real votes",
+        "status": "NEW",
+        "project": "my-project",
+        "branch": "main",
+        "owner": {"_account_id": 1000001, "name": "Jane Doe", "email": "jane@example.com"},
+        "updated": "2026-09-30 10:00:00",
+        "labels": {
+            "Build-Tools": {
+                "all": [
+                    {"_account_id": 1000002, "value": 0},
+                    {"_account_id": 1000003, "value": 0},
+                    {"_account_id": 1000004, "value": 0}
+                ]
+            },
+            "Code-Review": {
+                "all": [
+                    {"_account_id": 1000002, "value": 0},
+                    {"_account_id": 1000003, "value": 0},
+                    {"_account_id": 1000004, "value": 0},
+                    {"_account_id": 1000005, "name": "Jane Doe", "email": "jane@example.com", "value": 2}
+                ]
+            },
+            "Verified": {
+                "all": [
+                    {"_account_id": 1000002, "value": 0},
+                    {"_account_id": 1000003, "value": 0}
+                ]
+            }
+        }
+    }"#;
+
+    let text = get_change_details_against_mock(&mock_server, body).await;
+    let vote_lines: Vec<&str> = text.lines().filter(|l| l.starts_with("Vote ")).collect();
+
+    assert_eq!(
+        vote_lines,
+        vec!["Vote Code-Review: 2 (by Jane Doe <jane@example.com>)"],
+        "only real (non-zero) votes may be printed, got:\n{text}"
+    );
+    assert!(
+        !text.contains("(by account"),
+        "voters must not be shown as raw account ids, got:\n{text}"
+    );
+    assert!(
+        !text.contains("Build-Tools"),
+        "a label with no real votes must not be printed at all, got:\n{text}"
+    );
+}
+
+/// Ruling: `Vote <label>: <value> (by <display>)`, where `<display>` prefers
+/// `Name <email>`, then `Name`, then `<email>`, and falls back to `#<account id>`
+/// when Gerrit resolves neither (anonymous access, missing permission). Labels
+/// come from a `BTreeMap`, so the lines stay in alphabetical label order.
+#[tokio::test]
+async fn test_get_change_details_prints_voter_display_names() {
+    let mock_server = MockServer::start().await;
+
+    let body = r#"{
+        "id": "42",
+        "_number": 42,
+        "subject": "Voter display names",
+        "status": "NEW",
+        "project": "my-project",
+        "branch": "main",
+        "owner": {"_account_id": 1000001, "name": "Jane Doe", "email": "jane@example.com"},
+        "updated": "2026-09-30 10:00:00",
+        "labels": {
+            "Code-Review": {
+                "all": [
+                    {"_account_id": 1000000, "value": 0},
+                    {"_account_id": 1000002, "name": "Jane Doe", "email": "jane@example.com", "value": 2}
+                ]
+            },
+            "Owner-Approval": {
+                "all": [
+                    {"_account_id": 1000005, "value": 1}
+                ]
+            },
+            "Verified": {
+                "all": [
+                    {"_account_id": 1000003, "name": "Bob Reviewer", "value": -1}
+                ]
+            },
+            "Workflow": {
+                "all": [
+                    {"_account_id": 1000004, "email": "carol@example.com", "value": 1}
+                ]
+            }
+        }
+    }"#;
+
+    let text = get_change_details_against_mock(&mock_server, body).await;
+    let vote_lines: Vec<&str> = text.lines().filter(|l| l.starts_with("Vote ")).collect();
+
+    assert_eq!(
+        vote_lines,
+        vec![
+            "Vote Code-Review: 2 (by Jane Doe <jane@example.com>)",
+            "Vote Owner-Approval: 1 (by #1000005)",
+            "Vote Verified: -1 (by Bob Reviewer)",
+            "Vote Workflow: 1 (by carol@example.com)",
+        ],
+        "expected name/email with a numeric-id fallback, got:\n{text}"
+    );
+}
+
 #[tokio::test]
 async fn test_get_commit_message_pipeline() {
     let mock = MockGerritRepository::default();

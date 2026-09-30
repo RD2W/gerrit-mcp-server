@@ -25,6 +25,7 @@ use crate::mcp::tools::*;
 pub(crate) const GERRIT_OPTION_CURRENT_REVISION: &str = "CURRENT_REVISION";
 pub(crate) const GERRIT_OPTION_CURRENT_COMMIT: &str = "CURRENT_COMMIT";
 pub(crate) const GERRIT_OPTION_DETAILED_LABELS: &str = "DETAILED_LABELS";
+pub(crate) const GERRIT_OPTION_DETAILED_ACCOUNTS: &str = "DETAILED_ACCOUNTS";
 pub(crate) const REVIEWER_STATE_REVIEWER: &str = "REVIEWER";
 pub(crate) const DEFAULT_REVISION: &str = "current";
 pub(crate) const DEFAULT_STATUS_MERGED: &str = "merged";

@@ -124,6 +124,12 @@ pub struct LabelInfo {
 pub struct VoteInfo {
     #[serde(rename = "_account_id")]
     pub _account_id: u64,
+    /// Gerrit fills `name`/`email` in only when the caller requested
+    /// `DETAILED_ACCOUNTS`; without it a vote carries a bare account id.
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub email: Option<String>,
     #[serde(default)]
     pub value: Option<i32>,
 }
@@ -187,11 +193,10 @@ pub struct CommitParent {
 // FileInfo
 // ---------------------------------------------------------------------------
 
+/// Gerrit sends snake_case keys for `FileInfo` (`lines_inserted`,
+/// `lines_deleted`); with `#[serde(default)]` a renamed field deserialises
+/// silently as `0`. See rest-api-changes.html#file-info.
 #[derive(Debug, Clone, Deserialize, Serialize)]
-// Gerrit's FileInfo is the one payload in this module that uses snake_case field
-// names (`lines_inserted`, `lines_deleted`), so it must not be renamed to
-// camelCase — with `#[serde(default)]` a renamed field would silently deserialize
-// as 0 instead of failing. See rest-api-changes.html#file-info.
 pub struct FileInfo {
     #[serde(default)]
     pub status: Option<String>,
