@@ -4,6 +4,23 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to
 follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Configurable ticket extraction (`[bugs]`)** — `get_bugs_from_cl` and the
+  `Bugs:` line of `get_change_details` now take their tracker definitions from
+  the new `[bugs]` section (`[[bugs.trackers]]` with `name`, `footer_keys`,
+  `footer_value` and optional `inline`), so supporting another bug tracker needs
+  no code change. Without the section the built-in Bugzilla-style set
+  (`Bug:`/`Fixes:`/`Closes:`, inline `b/123`) is used, so existing behaviour is
+  unchanged. The config reference ships Bugzilla, Jira and Yandex Tracker
+  examples. Output stays flat for a single tracker and becomes grouped by
+  tracker name (`bugzilla: 12345; jira: PROJ-1234`) as soon as several match.
+  Patterns are compiled with `regex-lite` and validated at startup: an invalid
+  pattern aborts with the offending config path instead of silently extracting
+  nothing, and the effective tracker set is logged at startup.
+
 ## [1.4.1] — 2026-09-30
 
 ### Changed

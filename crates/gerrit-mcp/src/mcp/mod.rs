@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Maxim Krutovercev (RD2W) <mkrutovercev@yandex.ru>
 
+pub mod bugs;
 pub mod changes;
 pub mod comments;
 pub mod reviews;
@@ -12,7 +13,6 @@ use std::sync::{Arc, Mutex};
 
 use gerrit_core::domain::*;
 use gerrit_core::infrastructure::client::{GerritClient, GerritClientConfig};
-use regex_lite::Regex;
 use rmcp::{
     handler::server::{ServerHandler, tool::ToolRouter, wrapper::Parameters},
     model::{CallToolResult, ContentBlock, ProtocolVersion, ServerCapabilities, ServerConfig},
@@ -28,34 +28,6 @@ pub(crate) const GERRIT_OPTION_DETAILED_LABELS: &str = "DETAILED_LABELS";
 pub(crate) const REVIEWER_STATE_REVIEWER: &str = "REVIEWER";
 pub(crate) const DEFAULT_REVISION: &str = "current";
 pub(crate) const DEFAULT_STATUS_MERGED: &str = "merged";
-
-pub(crate) fn extract_bugs(commit_message: &str) -> Vec<String> {
-    let mut bugs: Vec<String> = Vec::new();
-
-    let prefix_re = Regex::new(r"(?im)^\s*(?:bug|fixes|closes)\s*:\s*(.+)").unwrap();
-    let part_re = Regex::new(r"(?i)^(?:b/)?(\d+)$").unwrap();
-    for cap in prefix_re.captures_iter(commit_message) {
-        if let Some(m) = cap.get(1) {
-            for part in m.as_str().split(|c: char| c == ',' || c.is_whitespace()) {
-                let trimmed = part.trim();
-                if let Some(num) = part_re.captures(trimmed).and_then(|c| c.get(1)) {
-                    bugs.push(num.as_str().to_string());
-                }
-            }
-        }
-    }
-
-    let inline_re = Regex::new(r"(?i)\bb/(\d+)\b").unwrap();
-    for cap in inline_re.captures_iter(commit_message) {
-        if let Some(m) = cap.get(1) {
-            bugs.push(m.as_str().to_string());
-        }
-    }
-
-    bugs.sort_unstable();
-    bugs.dedup();
-    bugs
-}
 
 pub(crate) fn sort_by_date(changes: &mut [Change]) {
     changes.sort_by(|a, b| b.updated.cmp(&a.updated));
@@ -92,6 +64,7 @@ pub struct GerritServer<R: GerritRepository + Send + Sync + 'static> {
     client_config: Option<GerritClientConfig>,
     client_cache: Arc<Mutex<HashMap<String, Arc<GerritClient>>>>,
     read_only: bool,
+    bug_trackers: Arc<Vec<bugs::BugTrackerSpec>>,
 }
 
 impl<R: GerritRepository + Send + Sync + 'static> Clone for GerritServer<R> {
@@ -102,6 +75,7 @@ impl<R: GerritRepository + Send + Sync + 'static> Clone for GerritServer<R> {
             client_config: self.client_config.clone(),
             client_cache: self.client_cache.clone(),
             read_only: self.read_only,
+            bug_trackers: self.bug_trackers.clone(),
         }
     }
 }
@@ -114,6 +88,7 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
             client_config: None,
             client_cache: Arc::new(Mutex::new(HashMap::new())),
             read_only: false,
+            bug_trackers: Arc::new(bugs::default_trackers()),
         }
     }
 
@@ -125,6 +100,18 @@ impl<R: GerritRepository + Send + Sync + 'static> GerritServer<R> {
     pub fn with_read_only(mut self, read_only: bool) -> Self {
         self.read_only = read_only;
         self
+    }
+
+    /// Replaces the built-in tracker set with the one compiled from the
+    /// `[bugs]` configuration section.
+    pub fn with_bug_trackers(mut self, trackers: Vec<bugs::BugTrackerSpec>) -> Self {
+        self.bug_trackers = Arc::new(trackers);
+        self
+    }
+
+    /// Trackers used to extract tickets from commit messages.
+    pub(crate) fn bug_trackers(&self) -> &[bugs::BugTrackerSpec] {
+        &self.bug_trackers
     }
 
     fn check_not_readonly(&self, action: &str) -> Option<CallToolResult> {
@@ -1303,61 +1290,6 @@ mod tests {
         let text = extract_text(result);
         assert!(text.contains("Successfully submitted"));
         assert!(text.contains("MERGED"));
-    }
-
-    #[test]
-    fn test_extract_bugs_prefixes() {
-        let msg = "Bug: 12345, 67890\nFixes: 11111\nSome text\nCloses: 22222";
-        let bugs = extract_bugs(msg);
-        assert!(bugs.contains(&"11111".to_string()));
-        assert!(bugs.contains(&"12345".to_string()));
-        assert!(bugs.contains(&"22222".to_string()));
-        assert!(bugs.contains(&"67890".to_string()));
-    }
-
-    #[test]
-    fn test_extract_bugs_inline() {
-        let msg = "Fixed b/12345 and also b/99999";
-        let bugs = extract_bugs(msg);
-        assert!(bugs.contains(&"12345".to_string()));
-        assert!(bugs.contains(&"99999".to_string()));
-    }
-
-    #[test]
-    fn test_extract_bugs_dedup() {
-        let msg = "Bug: 12345\nFixes: 12345\nb/12345";
-        let bugs = extract_bugs(msg);
-        assert_eq!(bugs, vec!["12345"]);
-    }
-
-    #[test]
-    fn test_extract_bugs_empty() {
-        let bugs = extract_bugs("No bugs here.");
-        assert!(bugs.is_empty());
-    }
-
-    #[test]
-    fn test_extract_bugs_footer_with_b_prefix() {
-        let bugs = extract_bugs("Bug: b/67890");
-        assert_eq!(bugs, vec!["67890"]);
-    }
-
-    #[test]
-    fn test_extract_bugs_space_separated_footer() {
-        let bugs = extract_bugs("Bug: 1 2");
-        assert_eq!(bugs, vec!["1", "2"]);
-    }
-
-    #[test]
-    fn test_extract_bugs_inline_case_insensitive() {
-        let bugs = extract_bugs("Fixed B/123");
-        assert_eq!(bugs, vec!["123"]);
-    }
-
-    #[test]
-    fn test_extract_bugs_inline_no_partial_word() {
-        let bugs = extract_bugs("Fixed fb/123");
-        assert!(bugs.is_empty());
     }
 
     #[tokio::test]

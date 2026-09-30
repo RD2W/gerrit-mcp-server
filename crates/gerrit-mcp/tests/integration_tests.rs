@@ -11,6 +11,7 @@ use gerrit_core::infrastructure::client::{GerritClient, GerritClientConfig};
 use gerrit_core::infrastructure::tls::TlsConfig;
 use gerrit_mcp::config::{AuthConfig, Config};
 use gerrit_mcp::mcp::GerritServer;
+use gerrit_mcp::mcp::bugs::BugTrackerSpec;
 use gerrit_mcp::mcp::tools::*;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::ContentBlock;
@@ -733,6 +734,47 @@ async fn test_get_bugs_from_cl_no_bugs() {
     let text = extract_text(result);
 
     assert!(text.contains("No bugs found"));
+}
+
+#[tokio::test]
+async fn test_get_bugs_from_cl_uses_configured_trackers() {
+    let tracker =
+        BugTrackerSpec::compile("jira", &["jira".to_string()], r"([A-Z][A-Z0-9]*-\d+)", None)
+            .expect("tracker pattern must compile");
+
+    let mock = MockGerritRepository::default();
+    mock.push_get_commit_result(Ok(CommitInfo {
+        message: "Fix critical issue\n\nJIRA: PROJ-1234\nJIRA: PROJ-5678".into(),
+    }));
+    let server = GerritServer::new(mock).with_bug_trackers(vec![tracker]);
+
+    let params = GetBugsFromClParams {
+        change_id: "123".into(),
+        gerrit_base_url: None,
+    };
+    let result = server.get_bugs_from_cl(Parameters(params)).await;
+
+    assert_eq!(extract_text(result), "Bugs: PROJ-1234, PROJ-5678");
+}
+
+#[tokio::test]
+async fn test_get_bugs_from_cl_default_set_stays_bugzilla_only() {
+    let mock = MockGerritRepository::default();
+    mock.push_get_commit_result(Ok(CommitInfo {
+        message: "Fix critical issue\n\nJIRA: PROJ-1234".into(),
+    }));
+    let server = GerritServer::new(mock);
+
+    let params = GetBugsFromClParams {
+        change_id: "123".into(),
+        gerrit_base_url: None,
+    };
+    let result = server.get_bugs_from_cl(Parameters(params)).await;
+
+    assert!(
+        extract_text(result).contains("No bugs found"),
+        "the built-in tracker set must not pick up foreign keys"
+    );
 }
 
 #[tokio::test]

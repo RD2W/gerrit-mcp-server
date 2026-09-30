@@ -10,11 +10,12 @@ use rmcp::model::CallToolResult;
 
 use crate::health::metrics;
 use crate::mcp::GerritServer;
+use crate::mcp::bugs::{extract_bugs, format_bugs};
 use crate::mcp::tools::*;
 use crate::mcp::{
     DEFAULT_REVISION, DEFAULT_STATUS_MERGED, GERRIT_OPTION_CURRENT_COMMIT,
     GERRIT_OPTION_CURRENT_REVISION, GERRIT_OPTION_DETAILED_LABELS, REVIEWER_STATE_REVIEWER,
-    extract_bugs, format_changes_output, sort_by_date,
+    format_changes_output, sort_by_date,
 };
 
 pub async fn query_changes<R: GerritRepository + Send + Sync + 'static>(
@@ -134,9 +135,9 @@ pub async fn get_change_details<R: GerritRepository + Send + Sync + 'static>(
                 .and_then(|r| r.commit.as_ref())
                 .map(|c| c.message.clone())
                 .unwrap_or_default();
-            let bugs = extract_bugs(&commit_msg);
+            let bugs = extract_bugs(&commit_msg, server.bug_trackers());
             if !bugs.is_empty() {
-                lines.push(format!("Bugs: {}", bugs.join(", ")));
+                lines.push(format!("Bugs: {}", format_bugs(&bugs)));
             }
 
             if let Some(ref reviewers) = detail.reviewers
@@ -229,11 +230,11 @@ pub async fn get_bugs_from_cl<R: GerritRepository + Send + Sync + 'static>(
     let result = repo.get_commit(&params.change_id).await;
     match result {
         Ok(commit) => {
-            let bugs = extract_bugs(&commit.message);
+            let bugs = extract_bugs(&commit.message, server.bug_trackers());
             if bugs.is_empty() {
                 server.text("No bugs found in commit message.".to_string())
             } else {
-                server.text(format!("Bugs: {}", bugs.join(", ")))
+                server.text(format!("Bugs: {}", format_bugs(&bugs)))
             }
         }
         Err(e) => server.error(format!("Failed to get bugs from CL: {e}")),
