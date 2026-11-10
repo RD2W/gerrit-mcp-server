@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to
 follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.5.0] — 2026-11-10
 
 ### Added
 
@@ -23,6 +23,14 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   startup.
 
 ### Changed
+
+- **Minimum supported Rust version raised to 1.99** — the project and the
+  published Docker image are now built with Rust 1.99 (edition 2024).
+
+- **Dependency refresh** — `rmcp` 3.5 → 3.9, `toml` 1.1.6 → 1.2.1,
+  `tokio` 1.53.1 → 1.54.1, `lru` 0.18.5 → 0.19.0, plus patch-level bumps of
+  `rustls`, `rustls-native-certs`, `schemars` and `serde_json`; no source
+  changes were needed.
 
 - **Rollout order for the `[bugs]` section** — `Config` is deserialised with
   `deny_unknown_fields`, so an image older than the release that introduces
