@@ -98,8 +98,19 @@ async fn main() -> anyhow::Result<()> {
         );
     }
 
+    let bug_trackers = config.bugs.compile()?;
+    tracing::info!(
+        trackers = %bug_trackers
+            .iter()
+            .map(|t| t.describe())
+            .collect::<Vec<_>>()
+            .join("; "),
+        "bug extraction configured"
+    );
+
     let server = GerritServer::new(service)
         .with_client_factory(client_config)
+        .with_bug_trackers(bug_trackers)
         .with_read_only(config.service.read_only);
 
     run_transport(&config, server).await?;

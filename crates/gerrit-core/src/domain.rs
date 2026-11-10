@@ -73,9 +73,12 @@ pub struct ChangeDetail {
     pub branch: String,
     pub owner: AccountInfo,
     pub updated: String,
-    #[serde(default)]
+    /// Gerrit serialises this as `current_revision` (Gson
+    /// `LOWER_CASE_WITH_UNDERSCORES`), not `currentRevision`.
+    #[serde(default, rename = "current_revision")]
     pub current_revision: Option<String>,
-    #[serde(default)]
+    /// Gerrit wire key: `current_revision_number`.
+    #[serde(default, rename = "current_revision_number")]
     pub current_revision_number: Option<u64>,
     #[serde(default)]
     pub revisions: BTreeMap<String, RevisionInfo>,
@@ -124,6 +127,12 @@ pub struct LabelInfo {
 pub struct VoteInfo {
     #[serde(rename = "_account_id")]
     pub _account_id: u64,
+    /// Gerrit fills `name`/`email` in only when the caller requested
+    /// `DETAILED_ACCOUNTS`; without it a vote carries a bare account id.
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub email: Option<String>,
     #[serde(default)]
     pub value: Option<i32>,
 }
@@ -187,8 +196,10 @@ pub struct CommitParent {
 // FileInfo
 // ---------------------------------------------------------------------------
 
+/// Gerrit sends snake_case keys for `FileInfo` (`lines_inserted`,
+/// `lines_deleted`); with `#[serde(default)]` a renamed field deserialises
+/// silently as `0`. See rest-api-changes.html#file-info.
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct FileInfo {
     #[serde(default)]
     pub status: Option<String>,

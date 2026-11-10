@@ -14,6 +14,8 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+use crate::mcp::bugs::{BugTrackerSpec, default_trackers};
+
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
@@ -26,6 +28,8 @@ pub struct Config {
     pub gerrit: GerritConfig,
     /// Service-level behaviour.
     pub service: ServiceConfig,
+    /// Bug/ticket extraction settings.
+    pub bugs: BugsConfig,
     /// Cache settings.
     pub cache: CacheConfig,
     /// Rate limit settings.
@@ -215,6 +219,9 @@ impl Config {
                 "gerrit.base_url must not be empty".into(),
             ));
         }
+        // Fail fast on unusable tracker patterns instead of silently
+        // extracting nothing at request time.
+        self.bugs.compile()?;
         Ok(())
     }
 }
@@ -316,6 +323,74 @@ impl Default for ServiceConfig {
             default_max_results: 25,
             read_only: false,
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// BugsConfig
+// ---------------------------------------------------------------------------
+
+/// Ticket extraction settings (`[bugs]` section).
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct BugsConfig {
+    /// Tracker definitions. An empty list means the built-in default.
+    pub trackers: Vec<BugTrackerConfig>,
+}
+
+/// One tracker definition inside `[[bugs.trackers]]`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct BugTrackerConfig {
+    /// Tracker name, used in the tool output.
+    pub name: String,
+    /// Footer line prefixes, e.g. `["bug", "fixes"]`.
+    pub footer_keys: Vec<String>,
+    /// Pattern matched against every footer value token (anchored).
+    pub footer_value: String,
+    /// Optional pattern searched anywhere in the commit message.
+    #[serde(default)]
+    pub inline: Option<String>,
+}
+
+impl BugsConfig {
+    /// Compiles the configured trackers, falling back to the built-in set.
+    ///
+    /// # Errors
+    /// Returns [`ConfigError::Validation`] naming the offending field when a
+    /// pattern is invalid or a definition is incomplete.
+    pub fn compile(&self) -> Result<Vec<BugTrackerSpec>, ConfigError> {
+        if self.trackers.is_empty() {
+            return Ok(default_trackers());
+        }
+
+        let mut specs = Vec::with_capacity(self.trackers.len());
+        let mut seen: Vec<&str> = Vec::with_capacity(self.trackers.len());
+
+        for (index, tracker) in self.trackers.iter().enumerate() {
+            let name = tracker.name.trim();
+
+            if seen.contains(&name) {
+                return Err(ConfigError::Validation(format!(
+                    "bugs.trackers[{index}].name: duplicate tracker name `{name}`"
+                )));
+            }
+
+            // `BugTrackerSpec::compile` prefixes its message with the
+            // offending field, so the index turns it into a config path.
+            let spec = BugTrackerSpec::compile(
+                name,
+                &tracker.footer_keys,
+                &tracker.footer_value,
+                tracker.inline.as_deref(),
+            )
+            .map_err(|e| ConfigError::Validation(format!("bugs.trackers[{index}].{e}")))?;
+
+            seen.push(name);
+            specs.push(spec);
+        }
+
+        Ok(specs)
     }
 }
 
@@ -949,5 +1024,118 @@ unknown_field = 42
         let config = ServiceConfig::default();
         assert_eq!(config.default_max_results, 25);
         assert!(!config.read_only);
+    }
+
+    // --- [bugs] section -----------------------------------------------------
+
+    fn parse(toml_str: &str) -> Config {
+        toml::from_str(toml_str).expect("config must parse")
+    }
+
+    #[test]
+    fn bugs_section_absent_falls_back_to_builtin_bugzilla() {
+        let trackers = parse("").bugs.compile().expect("must compile");
+        assert_eq!(trackers.len(), 1);
+        assert_eq!(trackers[0].name, "bugzilla");
+    }
+
+    #[test]
+    fn bugs_section_keeps_trackers_in_configuration_order() {
+        let config = parse(
+            r#"
+[[bugs.trackers]]
+name = "bugzilla"
+footer_keys = ["bug"]
+footer_value = "(\\d+)"
+
+[[bugs.trackers]]
+name = "jira"
+footer_keys = ["jira"]
+footer_value = "([A-Z]+-\\d+)"
+"#,
+        );
+        let trackers = config.bugs.compile().expect("must compile");
+        let names: Vec<&str> = trackers.iter().map(|t| t.name.as_str()).collect();
+        assert_eq!(names, vec!["bugzilla", "jira"]);
+    }
+
+    #[test]
+    fn configured_tracker_patterns_drive_extraction() {
+        let config = parse(
+            r#"
+[[bugs.trackers]]
+name = "jira"
+footer_keys = ["jira"]
+footer_value = "([A-Z]+-\\d+)"
+"#,
+        );
+        let trackers = config.bugs.compile().expect("must compile");
+        let hits = crate::mcp::bugs::extract_bugs("JIRA: PROJ-1234", &trackers);
+        let ids: Vec<&str> = hits.iter().map(|h| h.id.as_str()).collect();
+        assert_eq!(ids, vec!["PROJ-1234"]);
+    }
+
+    #[test]
+    fn bugs_section_rejects_invalid_pattern_with_field_path() {
+        let config = parse(
+            r#"
+[[bugs.trackers]]
+name = "broken"
+footer_keys = ["bug"]
+footer_value = "([0-9"
+"#,
+        );
+        let err = config.bugs.compile().unwrap_err().to_string();
+        assert!(
+            err.contains("bugs.trackers[0].footer_value"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn bugs_section_rejects_duplicate_tracker_names() {
+        let config = parse(
+            r#"
+[[bugs.trackers]]
+name = "jira"
+footer_keys = ["jira"]
+footer_value = "(\\d+)"
+
+[[bugs.trackers]]
+name = "jira"
+footer_keys = ["ticket"]
+footer_value = "(\\d+)"
+"#,
+        );
+        let err = config.bugs.compile().unwrap_err().to_string();
+        assert!(err.contains("duplicate"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn bugs_section_rejects_unknown_fields() {
+        let result: Result<Config, _> = toml::from_str(
+            r#"
+[[bugs.trackers]]
+name = "jira"
+footer_keys = ["jira"]
+footer_value = "(\\d+)"
+unknown_field = 1
+"#,
+        );
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("unknown field"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn validate_rejects_invalid_bug_tracker_pattern() {
+        let mut config = parse("");
+        config.gerrit.base_url = "https://gerrit.example.com".to_string();
+        config.bugs.trackers.push(BugTrackerConfig {
+            name: "broken".to_string(),
+            footer_keys: vec!["bug".to_string()],
+            footer_value: "([0-9".to_string(),
+            inline: None,
+        });
+        assert!(config.validate().is_err());
     }
 }

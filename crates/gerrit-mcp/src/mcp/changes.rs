@@ -10,11 +10,12 @@ use rmcp::model::CallToolResult;
 
 use crate::health::metrics;
 use crate::mcp::GerritServer;
+use crate::mcp::bugs::{extract_bugs, format_bugs};
 use crate::mcp::tools::*;
 use crate::mcp::{
     DEFAULT_REVISION, DEFAULT_STATUS_MERGED, GERRIT_OPTION_CURRENT_COMMIT,
-    GERRIT_OPTION_CURRENT_REVISION, GERRIT_OPTION_DETAILED_LABELS, REVIEWER_STATE_REVIEWER,
-    extract_bugs, format_changes_output, sort_by_date,
+    GERRIT_OPTION_CURRENT_REVISION, GERRIT_OPTION_DETAILED_ACCOUNTS, GERRIT_OPTION_DETAILED_LABELS,
+    REVIEWER_STATE_REVIEWER, format_changes_output, sort_by_date,
 };
 
 pub async fn query_changes<R: GerritRepository + Send + Sync + 'static>(
@@ -95,6 +96,18 @@ pub async fn query_changes_by_date_and_filters<R: GerritRepository + Send + Sync
     }
 }
 
+/// Display for a vote's author: `Name <email>`, `Name`, `<email>`, or the bare
+/// account id when Gerrit resolved neither (anonymous access, missing
+/// permission).
+fn format_voter(vote: &VoteInfo) -> String {
+    match (vote.name.as_deref(), vote.email.as_deref()) {
+        (Some(name), Some(email)) => format!("{name} <{email}>"),
+        (Some(name), None) => name.to_string(),
+        (None, Some(email)) => email.to_string(),
+        (None, None) => format!("#{}", vote._account_id),
+    }
+}
+
 pub async fn get_change_details<R: GerritRepository + Send + Sync + 'static>(
     server: &GerritServer<R>,
     params: GetChangeDetailsParams,
@@ -103,6 +116,8 @@ pub async fn get_change_details<R: GerritRepository + Send + Sync + 'static>(
         GERRIT_OPTION_CURRENT_REVISION,
         GERRIT_OPTION_CURRENT_COMMIT,
         GERRIT_OPTION_DETAILED_LABELS,
+        // Without this Gerrit answers `labels[*].all` with bare `_account_id`s.
+        GERRIT_OPTION_DETAILED_ACCOUNTS,
     ];
     let extra = params.options.unwrap_or_default();
     let opts = GerritServer::<R>::merge_options(base, &extra);
@@ -134,9 +149,9 @@ pub async fn get_change_details<R: GerritRepository + Send + Sync + 'static>(
                 .and_then(|r| r.commit.as_ref())
                 .map(|c| c.message.clone())
                 .unwrap_or_default();
-            let bugs = extract_bugs(&commit_msg);
+            let bugs = extract_bugs(&commit_msg, server.bug_trackers());
             if !bugs.is_empty() {
-                lines.push(format!("Bugs: {}", bugs.join(", ")));
+                lines.push(format!("Bugs: {}", format_bugs(&bugs)));
             }
 
             if let Some(ref reviewers) = detail.reviewers
@@ -152,10 +167,17 @@ pub async fn get_change_details<R: GerritRepository + Send + Sync + 'static>(
 
             for (label_name, label_info) in &detail.labels {
                 for vote in &label_info.all {
-                    if let Some(val) = vote.value {
+                    // With DETAILED_LABELS Gerrit puts an entry into `all` for
+                    // every account allowed to vote and uses `value: 0` for the
+                    // ones that have not voted; only real votes are reported.
+                    if let Some(val) = vote.value
+                        && val != 0
+                    {
                         lines.push(format!(
-                            "Vote {}: {} (by account {})",
-                            label_name, val, vote._account_id
+                            "Vote {}: {} (by {})",
+                            label_name,
+                            val,
+                            format_voter(vote)
                         ));
                     }
                 }
@@ -229,11 +251,11 @@ pub async fn get_bugs_from_cl<R: GerritRepository + Send + Sync + 'static>(
     let result = repo.get_commit(&params.change_id).await;
     match result {
         Ok(commit) => {
-            let bugs = extract_bugs(&commit.message);
+            let bugs = extract_bugs(&commit.message, server.bug_trackers());
             if bugs.is_empty() {
                 server.text("No bugs found in commit message.".to_string())
             } else {
-                server.text(format!("Bugs: {}", bugs.join(", ")))
+                server.text(format!("Bugs: {}", format_bugs(&bugs)))
             }
         }
         Err(e) => server.error(format!("Failed to get bugs from CL: {e}")),

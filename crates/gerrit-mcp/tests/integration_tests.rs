@@ -11,6 +11,7 @@ use gerrit_core::infrastructure::client::{GerritClient, GerritClientConfig};
 use gerrit_core::infrastructure::tls::TlsConfig;
 use gerrit_mcp::config::{AuthConfig, Config};
 use gerrit_mcp::mcp::GerritServer;
+use gerrit_mcp::mcp::bugs::BugTrackerSpec;
 use gerrit_mcp::mcp::tools::*;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::ContentBlock;
@@ -199,8 +200,8 @@ async fn test_client_get_change_detail_parsing() {
             "email": "alice@example.com"
         },
         "updated": "2026-07-01 12:00:00",
-        "currentRevision": "rev-hash-abc",
-        "currentRevisionNumber": 3,
+        "current_revision": "rev-hash-abc",
+        "current_revision_number": 3,
         "revisions": {
             "rev-hash-abc": {
                 "_number": 3,
@@ -290,10 +291,15 @@ async fn test_client_xssi_stripping_in_get_change_detail() {
 async fn test_client_list_files_parsing() {
     let server = MockServer::start().await;
 
+    // Payload shape of GET /changes/{change-id}/revisions/{revision-id}/files/ as
+    // Gerrit actually sends it (Gerrit REST API, "FileInfo" in
+    // rest-api-changes.html): snake_case keys, and no `status` for a plain
+    // modification — Gerrit sets `status` only for added/deleted/renamed/copied/
+    // rewritten files.
     let files_json = r#"{
-        "src/main.rs": {"status": "M", "linesInserted": 10, "linesDeleted": 2},
-        "src/lib.rs": {"status": "A", "linesInserted": 50, "linesDeleted": 0},
-        "/COMMIT_MSG": {"status": "M", "linesInserted": 5, "linesDeleted": 0}
+        "src/main.rs": {"lines_inserted": 10, "lines_deleted": 2},
+        "src/lib.rs": {"status": "A", "lines_inserted": 50, "lines_deleted": 0},
+        "/COMMIT_MSG": {"lines_inserted": 5, "lines_deleted": 0}
     }"#;
 
     Mock::given(method("GET"))
@@ -314,11 +320,15 @@ async fn test_client_list_files_parsing() {
     let files = client.list_files("123").await.unwrap();
 
     assert_eq!(files.len(), 3);
-    assert_eq!(files["src/main.rs"].status, Some("M".into()));
+    assert_eq!(
+        files["src/main.rs"].status, None,
+        "a modified file carries no status"
+    );
     assert_eq!(files["src/main.rs"].lines_inserted, 10);
     assert_eq!(files["src/main.rs"].lines_deleted, 2);
     assert_eq!(files["src/lib.rs"].status, Some("A".into()));
     assert_eq!(files["src/lib.rs"].lines_inserted, 50);
+    assert_eq!(files["src/lib.rs"].lines_deleted, 0);
 }
 
 #[tokio::test]
@@ -589,6 +599,274 @@ async fn test_get_change_detail_pipeline() {
     assert!(text.contains("Bugs: 42"));
 }
 
+/// Run the `get_change_details` tool against a wiremock Gerrit that answers the
+/// detail endpoint with `body`, and return the tool's text output.
+async fn get_change_details_against_mock(mock_server: &MockServer, body: &str) -> String {
+    Mock::given(method("GET"))
+        .and(path("/changes/42/detail"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(body))
+        .mount(mock_server)
+        .await;
+
+    let client = GerritClient::new(GerritClientConfig {
+        base_url: mock_server.uri(),
+        auth: AuthMode::Bearer("token".into()),
+        timeout: Duration::from_secs(5),
+        tls: test_tls_config(),
+        disable_url_normalization: true,
+    })
+    .unwrap();
+    let server = GerritServer::new(GerritService::new(client));
+
+    let params = GetChangeDetailsParams {
+        change_id: "42".into(),
+        gerrit_base_url: None,
+        options: None,
+    };
+    extract_text(server.get_change_details(Parameters(params)).await)
+}
+
+/// Regression (B2 root cause at the wire level): the tool requested
+/// `DETAILED_LABELS` but never `DETAILED_ACCOUNTS`, so Gerrit was free to answer
+/// `labels[*].all` with bare `_account_id`s and the output showed
+/// `by account 1000002`. The mock only answers when the option is present.
+#[tokio::test]
+async fn test_get_change_details_requests_detailed_accounts() {
+    let mock_server = MockServer::start().await;
+
+    let body = r#"{
+        "id": "42",
+        "_number": 42,
+        "subject": "Resolve voter accounts",
+        "status": "NEW",
+        "project": "my-project",
+        "branch": "main",
+        "owner": {"_account_id": 1000001, "name": "Jane Doe", "email": "jane@example.com"},
+        "updated": "2026-09-30 10:00:00",
+        "labels": {
+            "Code-Review": {
+                "all": [
+                    {"_account_id": 1000002, "name": "Bob Reviewer", "email": "bob@example.com", "value": 1}
+                ]
+            }
+        }
+    }"#;
+
+    Mock::given(method("GET"))
+        .and(path("/changes/42/detail"))
+        .and(query_param("o", "DETAILED_ACCOUNTS"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(body))
+        .mount(&mock_server)
+        .await;
+
+    let client = GerritClient::new(GerritClientConfig {
+        base_url: mock_server.uri(),
+        auth: AuthMode::Bearer("token".into()),
+        timeout: Duration::from_secs(5),
+        tls: test_tls_config(),
+        disable_url_normalization: true,
+    })
+    .unwrap();
+    let server = GerritServer::new(GerritService::new(client));
+
+    let params = GetChangeDetailsParams {
+        change_id: "42".into(),
+        gerrit_base_url: None,
+        options: None,
+    };
+    let text = extract_text(server.get_change_details(Parameters(params)).await);
+
+    assert!(
+        text.contains("Resolve voter accounts"),
+        "this mock answers only when the request carries o=DETAILED_ACCOUNTS, got:\n{text}"
+    );
+    assert!(
+        text.contains("Vote Code-Review: 1 (by Bob Reviewer <bob@example.com>)"),
+        "expected the resolved voter name and email, got:\n{text}"
+    );
+}
+
+/// Regression (B1): with `DETAILED_LABELS` Gerrit puts an entry into
+/// `labels[*].all` for *every* account allowed to vote, marking non-voters with
+/// `value: 0` — Gerrit documents `value` as "present and zero" meaning "may vote
+/// but has not". The formatter printed every such entry, which produced roughly
+/// 110 lines of `Vote Code-Review: 0 (by account ...)` on the reported change.
+#[tokio::test]
+async fn test_get_change_details_prints_only_real_votes() {
+    let mock_server = MockServer::start().await;
+
+    let body = r#"{
+        "id": "42",
+        "_number": 42,
+        "subject": "Only real votes",
+        "status": "NEW",
+        "project": "my-project",
+        "branch": "main",
+        "owner": {"_account_id": 1000001, "name": "Jane Doe", "email": "jane@example.com"},
+        "updated": "2026-09-30 10:00:00",
+        "labels": {
+            "Build-Tools": {
+                "all": [
+                    {"_account_id": 1000002, "value": 0},
+                    {"_account_id": 1000003, "value": 0},
+                    {"_account_id": 1000004, "value": 0}
+                ]
+            },
+            "Code-Review": {
+                "all": [
+                    {"_account_id": 1000002, "value": 0},
+                    {"_account_id": 1000003, "value": 0},
+                    {"_account_id": 1000004, "value": 0},
+                    {"_account_id": 1000005, "name": "Jane Doe", "email": "jane@example.com", "value": 2}
+                ]
+            },
+            "Verified": {
+                "all": [
+                    {"_account_id": 1000002, "value": 0},
+                    {"_account_id": 1000003, "value": 0}
+                ]
+            }
+        }
+    }"#;
+
+    let text = get_change_details_against_mock(&mock_server, body).await;
+    let vote_lines: Vec<&str> = text.lines().filter(|l| l.starts_with("Vote ")).collect();
+
+    assert_eq!(
+        vote_lines,
+        vec!["Vote Code-Review: 2 (by Jane Doe <jane@example.com>)"],
+        "only real (non-zero) votes may be printed, got:\n{text}"
+    );
+    assert!(
+        !text.contains("(by account"),
+        "voters must not be shown as raw account ids, got:\n{text}"
+    );
+    assert!(
+        !text.contains("Build-Tools"),
+        "a label with no real votes must not be printed at all, got:\n{text}"
+    );
+}
+
+/// Ruling: `Vote <label>: <value> (by <display>)`, where `<display>` prefers
+/// `Name <email>`, then `Name`, then `<email>`, and falls back to `#<account id>`
+/// when Gerrit resolves neither. The fallback covers the reachable case of an
+/// account that is visible but has its name and email hidden — even anonymous
+/// requests still carry `_account_id`, so an id-less vote cannot occur. Labels
+/// come from a `BTreeMap`, so the lines stay in alphabetical label order.
+#[tokio::test]
+async fn test_get_change_details_prints_voter_display_names() {
+    let mock_server = MockServer::start().await;
+
+    let body = r#"{
+        "id": "42",
+        "_number": 42,
+        "subject": "Voter display names",
+        "status": "NEW",
+        "project": "my-project",
+        "branch": "main",
+        "owner": {"_account_id": 1000001, "name": "Jane Doe", "email": "jane@example.com"},
+        "updated": "2026-09-30 10:00:00",
+        "labels": {
+            "Code-Review": {
+                "all": [
+                    {"_account_id": 1000000, "value": 0},
+                    {"_account_id": 1000002, "name": "Jane Doe", "email": "jane@example.com", "value": 2}
+                ]
+            },
+            "Owner-Approval": {
+                "all": [
+                    {"_account_id": 1000005, "value": 1}
+                ]
+            },
+            "Verified": {
+                "all": [
+                    {"_account_id": 1000003, "name": "Bob Reviewer", "value": -1}
+                ]
+            },
+            "Workflow": {
+                "all": [
+                    {"_account_id": 1000004, "email": "carol@example.com", "value": 1}
+                ]
+            }
+        }
+    }"#;
+
+    let text = get_change_details_against_mock(&mock_server, body).await;
+    let vote_lines: Vec<&str> = text.lines().filter(|l| l.starts_with("Vote ")).collect();
+
+    assert_eq!(
+        vote_lines,
+        vec![
+            "Vote Code-Review: 2 (by Jane Doe <jane@example.com>)",
+            "Vote Owner-Approval: 1 (by #1000005)",
+            "Vote Verified: -1 (by Bob Reviewer)",
+            "Vote Workflow: 1 (by carol@example.com)",
+        ],
+        "expected name/email with a numeric-id fallback, got:\n{text}"
+    );
+}
+
+/// Regression (B4 root cause at the wire level): Gerrit's Gson serialises
+/// `ChangeDetail` with `LOWER_CASE_WITH_UNDERSCORES`, so the revision pointer
+/// arrives as `current_revision`. The model declared camelCase keys and thus
+/// read `None`, which left `commit_msg` empty and the `Bugs:` line dead.
+#[tokio::test]
+async fn test_get_change_details_prints_bugs_from_current_revision() {
+    let mock_server = MockServer::start().await;
+
+    let body = r#"{
+        "id": "42",
+        "_number": 42,
+        "subject": "Extract the ticket from the current revision",
+        "status": "NEW",
+        "project": "my-project",
+        "branch": "main",
+        "owner": {"_account_id": 1000001, "name": "Jane Doe", "email": "jane@example.com"},
+        "updated": "2026-09-30 10:00:00",
+        "current_revision": "0123456789abcdef0123456789abcdef01234567",
+        "current_revision_number": 1,
+        "revisions": {
+            "0123456789abcdef0123456789abcdef01234567": {
+                "_number": 1,
+                "commit": {
+                    "message": "Extract the ticket from the current revision\n\nJIRA: PROJ-1234\n\nChange-Id: I0123456789abcdef0123456789abcdef01234567"
+                }
+            }
+        }
+    }"#;
+
+    Mock::given(method("GET"))
+        .and(path("/changes/42/detail"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(body))
+        .mount(&mock_server)
+        .await;
+
+    let client = GerritClient::new(GerritClientConfig {
+        base_url: mock_server.uri(),
+        auth: AuthMode::Bearer("token".into()),
+        timeout: Duration::from_secs(5),
+        tls: test_tls_config(),
+        disable_url_normalization: true,
+    })
+    .unwrap();
+    let tracker =
+        BugTrackerSpec::compile("jira", &["jira".to_string()], r"([A-Z][A-Z0-9]*-\d+)", None)
+            .expect("tracker pattern must compile");
+    let server = GerritServer::new(GerritService::new(client)).with_bug_trackers(vec![tracker]);
+
+    let params = GetChangeDetailsParams {
+        change_id: "42".into(),
+        gerrit_base_url: None,
+        options: None,
+    };
+    let text = extract_text(server.get_change_details(Parameters(params)).await);
+
+    assert!(
+        text.contains("Bugs: PROJ-1234"),
+        "the Bugs: line must come from revisions[current_revision].commit.message, got:\n{text}"
+    );
+}
+
 #[tokio::test]
 async fn test_get_commit_message_pipeline() {
     let mock = MockGerritRepository::default();
@@ -617,7 +895,9 @@ async fn test_list_files_pipeline() {
     files.insert(
         "src/main.rs".into(),
         FileInfo {
-            status: Some("M".into()),
+            // Gerrit omits `status` for a plain modification; the formatter must
+            // still report it as `[M]`.
+            status: None,
             lines_inserted: 10,
             lines_deleted: 2,
         },
@@ -628,6 +908,15 @@ async fn test_list_files_pipeline() {
             status: Some("A".into()),
             lines_inserted: 42,
             lines_deleted: 0,
+        },
+    );
+    files.insert(
+        "src/copied.rs".into(),
+        FileInfo {
+            // `C` is one of the five statuses Gerrit documents for FileInfo.
+            status: Some("C".into()),
+            lines_inserted: 7,
+            lines_deleted: 1,
         },
     );
     mock.push_list_files_result(Ok(files));
@@ -642,6 +931,7 @@ async fn test_list_files_pipeline() {
 
     assert!(text.contains("[M] src/main.rs (+10, -2)"));
     assert!(text.contains("[A] src/lib.rs (+42, -0)"));
+    assert!(text.contains("[C] src/copied.rs (+7, -1)"));
     assert!(!text.contains("/COMMIT_MSG"));
 }
 
@@ -733,6 +1023,47 @@ async fn test_get_bugs_from_cl_no_bugs() {
     let text = extract_text(result);
 
     assert!(text.contains("No bugs found"));
+}
+
+#[tokio::test]
+async fn test_get_bugs_from_cl_uses_configured_trackers() {
+    let tracker =
+        BugTrackerSpec::compile("jira", &["jira".to_string()], r"([A-Z][A-Z0-9]*-\d+)", None)
+            .expect("tracker pattern must compile");
+
+    let mock = MockGerritRepository::default();
+    mock.push_get_commit_result(Ok(CommitInfo {
+        message: "Fix critical issue\n\nJIRA: PROJ-1234\nJIRA: PROJ-5678".into(),
+    }));
+    let server = GerritServer::new(mock).with_bug_trackers(vec![tracker]);
+
+    let params = GetBugsFromClParams {
+        change_id: "123".into(),
+        gerrit_base_url: None,
+    };
+    let result = server.get_bugs_from_cl(Parameters(params)).await;
+
+    assert_eq!(extract_text(result), "Bugs: PROJ-1234, PROJ-5678");
+}
+
+#[tokio::test]
+async fn test_get_bugs_from_cl_default_set_stays_bugzilla_only() {
+    let mock = MockGerritRepository::default();
+    mock.push_get_commit_result(Ok(CommitInfo {
+        message: "Fix critical issue\n\nJIRA: PROJ-1234".into(),
+    }));
+    let server = GerritServer::new(mock);
+
+    let params = GetBugsFromClParams {
+        change_id: "123".into(),
+        gerrit_base_url: None,
+    };
+    let result = server.get_bugs_from_cl(Parameters(params)).await;
+
+    assert!(
+        extract_text(result).contains("No bugs found"),
+        "the built-in tracker set must not pick up foreign keys"
+    );
 }
 
 #[tokio::test]

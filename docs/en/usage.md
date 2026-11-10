@@ -54,6 +54,76 @@ Credentials are never stored in the config file — only the env var names.
 | `default_max_results` | `25`    | Default result limit when client doesn't specify     |
 | `read_only`           | `false` | Disable all write operations (env: `READ_ONLY_MODE`) |
 
+### `[bugs]` — ticket extraction
+
+Controls how `get_bugs_from_cl` — and the `Bugs:` line of
+`get_change_details` — recognises tickets in commit messages. Trackers are
+described declaratively, so supporting another bug tracker needs no code change.
+
+Without this section the built-in Bugzilla set is used: footers
+`Bug:`/`Fixes:`/`Closes:` with an optional `b/` prefix, plus inline `b/123`.
+Defining at least one `[[bugs.trackers]]` replaces that default entirely.
+
+| Field          | Required | Description                                                   |
+|----------------|----------|---------------------------------------------------------------|
+| `name`         | yes      | Tracker name; shown in the output when several trackers match |
+| `footer_keys`  | yes      | Footer line prefixes, matched case-insensitively              |
+| `footer_value` | yes      | Pattern matched against every footer value token (anchored)   |
+| `inline`       | no       | Pattern searched anywhere in the commit message               |
+
+`footer_keys` are matched case-insensitively, but `regex-lite`'s `(?i)` folds
+ASCII letters only. A key containing non-ASCII letters therefore matches both
+the spelling as configured and its lower-cased form — `Баг` matches `Баг:` and
+`баг:` — while other mixed-case spellings of the same key are not folded: list
+every spelling you need as a separate key.
+
+Extraction runs in two phases per tracker:
+
+1. **footer** — every line matching `^\s*(?:key1|key2)\s*:\s*(.+)$` is
+   collected; the captured value is split on commas and whitespace, and each
+   token must match `footer_value` **as a whole** (the pattern is anchored for
+   you, hence `fb/123` does not match `(?:b/)?(\d+)`);
+2. **inline** — the optional pattern is searched anywhere in the message.
+
+The identifier is the value of capture group 1, or the whole match when the
+pattern has no groups. Patterns are compiled with `regex-lite`: look-around and
+backreferences are not supported. There is no environment override for
+patterns (they are config-file only). Invalid patterns abort startup with the
+offending path, e.g. `bugs.trackers[0].footer_value: ...`. The effective tracker
+set is logged at startup, so a typo in a key shows up immediately instead of
+silently yielding no results.
+
+```toml
+[[bugs.trackers]]
+name = "bugzilla"
+footer_keys = ["bug", "fixes", "closes"]
+footer_value = "(?i)(?:b/)?(\\d+)"
+inline = "(?i)\\bb/(\\d+)\\b"
+
+[[bugs.trackers]]
+name = "jira"
+footer_keys = ["jira", "ticket"]
+footer_value = "([A-Z][A-Z0-9]*-\\d+)"
+# `inline` is omitted deliberately: keys merely mentioned in the body — for
+# example "cherry-picked from PROJ-1234-02" — would otherwise be reported
+# as bugs of this change.
+
+[[bugs.trackers]]
+name = "yandex-tracker"
+footer_keys = ["tracker", "yt"]
+# Yandex Tracker keys look like `QUEUE-123` — the same shape as Jira keys, so
+# restrict the pattern to the queues you actually use.
+footer_value = "((?:TREKER|BUGS)-\\d+)"
+```
+
+**Rollout.** `[bugs]` is a new section and the config is parsed with
+`deny_unknown_fields`, so an image older than this release refuses to start
+when the section is present. Publish the new image **before** restarting a
+deployment with the new config; to roll the image back, remove `[bugs]` from
+the config first. The default tracker set stays Bugzilla-only — a Gerrit
+instance that uses Jira needs its own `[[bugs.trackers]]` entry (see
+`config/config.example.toml`).
+
 ### `[cache]` — in-memory cache
 
 | Field         | Default | Description                         |
